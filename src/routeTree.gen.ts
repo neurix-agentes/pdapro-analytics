@@ -12,12 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppTeamsRouteImport } from './routes/_app.teams'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSessionsRouteImport } from './routes/_app.sessions'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppHeatmapsRouteImport } from './routes/_app.heatmaps'
 import { Route as AppFieldsRouteImport } from './routes/_app.fields'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppClubsRouteImport } from './routes/_app.clubs'
 import { Route as AppAthletesRouteImport } from './routes/_app.athletes'
 
 const AuthRoute = AuthRouteImport.update({
@@ -33,6 +35,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppTeamsRoute = AppTeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
@@ -64,6 +71,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClubsRoute = AppClubsRouteImport.update({
+  id: '/clubs',
+  path: '/clubs',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAthletesRoute = AppAthletesRouteImport.update({
   id: '/athletes',
   path: '/athletes',
@@ -74,23 +86,27 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/athletes': typeof AppAthletesRoute
+  '/clubs': typeof AppClubsRoute
   '/dashboard': typeof AppDashboardRoute
   '/fields': typeof AppFieldsRoute
   '/heatmaps': typeof AppHeatmapsRoute
   '/reports': typeof AppReportsRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
+  '/teams': typeof AppTeamsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/athletes': typeof AppAthletesRoute
+  '/clubs': typeof AppClubsRoute
   '/dashboard': typeof AppDashboardRoute
   '/fields': typeof AppFieldsRoute
   '/heatmaps': typeof AppHeatmapsRoute
   '/reports': typeof AppReportsRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
+  '/teams': typeof AppTeamsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,12 +114,14 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/_app/athletes': typeof AppAthletesRoute
+  '/_app/clubs': typeof AppClubsRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/fields': typeof AppFieldsRoute
   '/_app/heatmaps': typeof AppHeatmapsRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/sessions': typeof AppSessionsRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/teams': typeof AppTeamsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,35 +129,41 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/athletes'
+    | '/clubs'
     | '/dashboard'
     | '/fields'
     | '/heatmaps'
     | '/reports'
     | '/sessions'
     | '/settings'
+    | '/teams'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/athletes'
+    | '/clubs'
     | '/dashboard'
     | '/fields'
     | '/heatmaps'
     | '/reports'
     | '/sessions'
     | '/settings'
+    | '/teams'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/auth'
     | '/_app/athletes'
+    | '/_app/clubs'
     | '/_app/dashboard'
     | '/_app/fields'
     | '/_app/heatmaps'
     | '/_app/reports'
     | '/_app/sessions'
     | '/_app/settings'
+    | '/_app/teams'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -170,6 +194,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/teams': {
+      id: '/_app/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof AppTeamsRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/settings': {
       id: '/_app/settings'
@@ -213,6 +244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clubs': {
+      id: '/_app/clubs'
+      path: '/clubs'
+      fullPath: '/clubs'
+      preLoaderRoute: typeof AppClubsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/athletes': {
       id: '/_app/athletes'
       path: '/athletes'
@@ -225,22 +263,26 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAthletesRoute: typeof AppAthletesRoute
+  AppClubsRoute: typeof AppClubsRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppFieldsRoute: typeof AppFieldsRoute
   AppHeatmapsRoute: typeof AppHeatmapsRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSessionsRoute: typeof AppSessionsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppTeamsRoute: typeof AppTeamsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAthletesRoute: AppAthletesRoute,
+  AppClubsRoute: AppClubsRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppFieldsRoute: AppFieldsRoute,
   AppHeatmapsRoute: AppHeatmapsRoute,
   AppReportsRoute: AppReportsRoute,
   AppSessionsRoute: AppSessionsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppTeamsRoute: AppTeamsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -253,13 +295,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
