@@ -1,138 +1,105 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { useState } from "react";
-import { Upload, FileUp, CheckCircle2, Loader2, Zap, MapPinned, User, CalendarDays } from "lucide-react";
-import { toast } from "sonner";
+import { Upload, CheckCircle2, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/app/PageHeader";
+import { useAthletes, useSessions } from "@/hooks/queries";
 
 export const Route = createFileRoute("/_app/sessions")({
   head: () => ({ meta: [{ title: "Sessões · PDA Sport" }] }),
   component: SessionsPage,
 });
 
-const STEPS = ["Enviando arquivo", "Processando GPS", "Filtrando coordenadas", "Gerando heatmap", "Calculando métricas", "Finalizando"];
+const statusIcon = {
+  processed: CheckCircle2,
+  processing: Loader2,
+  queued: Clock,
+  failed: AlertCircle,
+} as const;
+
+const statusTone = {
+  processed: "text-primary bg-primary/10 border-primary/20",
+  processing: "text-info bg-info/10 border-info/20",
+  queued: "text-[oklch(0.83_0.16_85)] bg-[oklch(0.83_0.16_85/0.12)] border-[oklch(0.83_0.16_85/0.25)]",
+  failed: "text-destructive bg-destructive/10 border-destructive/20",
+} as const;
 
 function SessionsPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [step, setStep] = useState(-1);
-  const processing = step >= 0 && step < STEPS.length;
-  const done = step >= STEPS.length;
-
-  function start() {
-    if (!file) return toast.error("Selecione um arquivo GPX/TCX/FIT.");
-    setStep(0);
-    const id = setInterval(() => {
-      setStep((s) => {
-        if (s + 1 >= STEPS.length) {
-          clearInterval(id);
-          toast.success("Análise concluída!");
-          return STEPS.length;
-        }
-        return s + 1;
-      });
-    }, 850);
-  }
+  const { data: sessions = [] } = useSessions();
+  const { data: athletes = [] } = useAthletes();
 
   return (
     <div className="space-y-8">
-      <div>
-        <div className="text-xs uppercase tracking-[0.18em] text-primary">Nova sessão</div>
-        <h1 className="mt-1 text-3xl md:text-4xl font-bold tracking-tight">Upload de arquivo GPS</h1>
-        <p className="text-sm text-muted-foreground mt-1">Envie o arquivo do GPS para gerar o heatmap e o painel físico completo.</p>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* Drop zone */}
-        <motion.label
-          htmlFor="gps-file"
-          whileHover={{ scale: 1.005 }}
-          className="lg:col-span-2 cursor-pointer relative glass rounded-3xl border-2 border-dashed border-primary/30 hover:border-primary/60 transition flex flex-col items-center justify-center p-12 min-h-[420px] text-center"
-        >
-          <div className={`h-20 w-20 rounded-2xl bg-primary/10 text-primary flex items-center justify-center ${file ? "" : "animate-pulse-glow"}`}>
-            {file ? <CheckCircle2 className="h-10 w-10" /> : <Upload className="h-10 w-10" />}
-          </div>
-          <h3 className="mt-6 text-xl font-semibold">
-            {file ? "Arquivo pronto para análise" : "Arraste seu arquivo GPS aqui"}
-          </h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {file ? file.name : "Suporte para .gpx · .tcx · .fit · até 25 MB"}
-          </p>
-          <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-border bg-surface/60 px-4 py-2 text-xs">
-            <FileUp className="h-3.5 w-3.5" /> Selecionar arquivo
-          </div>
-          <input
-            id="gps-file"
-            type="file"
-            accept=".gpx,.tcx,.fit"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-        </motion.label>
-
-        {/* Form */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <h3 className="text-sm font-semibold">Detalhes da sessão</h3>
-          <Select icon={<User className="h-4 w-4" />} label="Atleta" options={["Lucas Vieira", "Pedro Almeida", "Rafael Souza"]} />
-          <Select icon={<Zap className="h-4 w-4" />} label="Posição" options={["Goleiro", "Lateral", "Zagueiro", "Volante", "Meia", "Atacante"]} />
-          <Select icon={<MapPinned className="h-4 w-4" />} label="Campo" options={["Campo Principal", "Campo B", "CT Categorias"]} />
-          <Select icon={<CalendarDays className="h-4 w-4" />} label="Tipo de sessão" options={["Treino tático", "Treino físico", "Jogo amistoso", "Partida oficial"]} />
-
-          <button
-            onClick={start}
-            disabled={processing}
-            className="w-full mt-2 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:opacity-90 transition glow-primary disabled:opacity-60 inline-flex items-center justify-center gap-2"
-          >
-            {processing ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando…</> : <><Zap className="h-4 w-4" /> Gerar análise</>}
+      <PageHeader
+        eyebrow="Análises físicas"
+        title="Sessões"
+        description="Cada upload GPS é processado pelo backend analítico (FastAPI) para gerar métricas e heatmap."
+        actions={
+          <button className="rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold glow-primary hover:opacity-90 transition inline-flex items-center gap-2">
+            <Upload className="h-4 w-4" /> Nova sessão
           </button>
+        }
+      />
+
+      {/* Upload zone (visual) */}
+      <div className="glass rounded-2xl border-2 border-dashed border-primary/20 hover:border-primary/40 transition p-10 text-center">
+        <div className="h-12 w-12 mx-auto rounded-xl bg-primary/10 text-primary grid place-items-center">
+          <Upload className="h-5 w-5" />
         </div>
+        <div className="mt-3 text-sm font-semibold">Arraste um arquivo .gpx aqui</div>
+        <div className="text-xs text-muted-foreground mt-1">Suporte futuro: TCX, FIT</div>
       </div>
 
-      {/* Processing pipeline */}
-      {(processing || done) && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-sm font-semibold">Pipeline de processamento</h3>
-            <span className="text-xs text-muted-foreground">{done ? "Concluído" : `Etapa ${step + 1}/${STEPS.length}`}</span>
+      {/* List */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-border/40 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Histórico de sessões</h3>
+            <p className="text-[11px] text-muted-foreground">{sessions.length} registros no escopo atual</p>
           </div>
-          <div className="space-y-2.5">
-            {STEPS.map((s, i) => {
-              const stt = i < step ? "done" : i === step && !done ? "active" : done ? "done" : "pending";
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-surface/30">
+            <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <th className="text-left font-medium px-5 py-3">Atleta</th>
+              <th className="text-left font-medium px-3 py-3">Tipo</th>
+              <th className="text-left font-medium px-3 py-3">Data</th>
+              <th className="text-right font-medium px-3 py-3">Duração</th>
+              <th className="text-right font-medium px-3 py-3">Dist.</th>
+              <th className="text-right font-medium px-3 py-3">Sprints</th>
+              <th className="text-right font-medium px-5 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.slice(0, 40).map((s, i) => {
+              const ath = athletes.find((a) => a.id === s.athlete_id);
+              const Icon = statusIcon[s.status];
               return (
-                <div key={s} className="flex items-center gap-3">
-                  <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    stt === "done" ? "bg-primary text-primary-foreground" :
-                    stt === "active" ? "bg-primary/20 text-primary" :
-                    "bg-surface text-muted-foreground"
-                  }`}>
-                    {stt === "done" ? <CheckCircle2 className="h-3.5 w-3.5" /> :
-                     stt === "active" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
-                     i + 1}
-                  </div>
-                  <span className={`text-sm ${stt === "pending" ? "text-muted-foreground" : "text-foreground"}`}>{s}</span>
-                  {stt === "active" && (
-                    <div className="flex-1 h-1 rounded-full bg-surface overflow-hidden ml-2">
-                      <div className="h-full w-1/2 bg-primary animate-pulse glow-primary" />
-                    </div>
-                  )}
-                </div>
+                <motion.tr
+                  key={s.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.2, delay: i * 0.008 }}
+                  className="border-t border-border/30 hover:bg-surface/30 transition"
+                >
+                  <td className="px-5 py-3 font-medium">{ath?.name ?? s.athlete_id}</td>
+                  <td className="px-3 py-3 capitalize text-muted-foreground">{s.session_type}</td>
+                  <td className="px-3 py-3 text-muted-foreground text-xs">
+                    {new Date(s.date).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  </td>
+                  <td className="px-3 py-3 text-right text-xs">{s.duration_min}'</td>
+                  <td className="px-3 py-3 text-right">{s.metrics?.distance_km.toFixed(1)} km</td>
+                  <td className="px-3 py-3 text-right">{s.metrics?.sprints}</td>
+                  <td className="px-5 py-3 text-right">
+                    <span className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border ${statusTone[s.status]}`}>
+                      <Icon className={`h-3 w-3 ${s.status === "processing" ? "animate-spin" : ""}`} /> {s.status}
+                    </span>
+                  </td>
+                </motion.tr>
               );
             })}
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
-}
-
-function Select({ icon, label, options }: { icon: React.ReactNode; label: string; options: string[] }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
-      <div className="mt-1 relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">{icon}</span>
-        <select className="w-full rounded-xl bg-surface/60 border border-border pl-9 pr-3 py-2.5 text-sm outline-none focus:border-primary/60 transition appearance-none">
-          {options.map((o) => <option key={o}>{o}</option>)}
-        </select>
+          </tbody>
+        </table>
       </div>
-    </label>
+    </div>
   );
 }
