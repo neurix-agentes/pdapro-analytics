@@ -1,125 +1,118 @@
+# Fase 3 — Lovable Cloud + Dashboard Analytics Premium
 
-# PDA Sport — Fase 2: Arquitetura SaaS Escalável
+## Parte 1 — Conectar Lovable Cloud
 
-Transformar a base atual em uma plataforma SaaS multi-clubes / multi-times com hierarquia completa, mantendo o visual dark premium já estabelecido. **Sem backend real** — toda a camada de dados será mockada mas estruturada como se já existisse uma API.
+Vou habilitar o Lovable Cloud (Supabase gerenciado) para preparar autenticação real e storage de arquivos GPS.
 
----
+**O que será provisionado automaticamente:**
 
-## 1. Camada de Dados (Mock + Tipos)
+- Projeto Supabase conectado
+- Cliente browser (`@/integrations/supabase/client`)
+- Cliente admin server-side (`client.server.ts`)
+- Middleware de auth para server functions
+- Variáveis de ambiente (`VITE_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` etc.)
 
-Criar a estrutura `src/` preparada para a API futura:
+**O que NÃO será implementado nesta fase** (apenas conexão + estrutura):
 
-```text
-src/
-├── types/           → entidades TS (Club, Team, Coach, Athlete, Session, Heatmap, Report, Field)
-├── api/             → client fetch + interceptors (mock por enquanto)
-├── services/        → clubsService, teamsService, athletesService, sessionsService...
-├── hooks/           → useClubs, useTeams, useAthletes (TanStack Query wrappers)
-├── store/           → authStore, clubStore, teamStore, athleteStore, sessionStore, notificationStore (Zustand)
-└── mocks/           → dados realistas: 3 clubes, ~6 times, ~40 atletas, ~80 sessões, heatmaps
+- Migrations das tabelas reais (athletes, sessions, heatmaps...) — fica para Fase 4
+- Login real / signup UI funcional — Fase 4
+- Upload real de GPX para Storage — Fase 4
+- RLS policies definitivas — Fase 4
+
+**O que será preparado:**
+
+- Criação dos buckets de Storage: `gps-files` (privado), `heatmaps` (público), `reports` (privado) via migration
+- RLS básico nos buckets (somente authenticated insert/select)
+- Stub de `authStore` apontando para `supabase.auth` (mantendo mock fallback enquanto não houver users)
+
+Pergunta: a migration das tabelas de domínio (clubs, teams, athletes, sessions, heatmaps, reports, fields, coaches, user_roles) entra agora junto com a conexão, ou só na Fase 4 quando formos plugar auth real? **Recomendação:** só a conexão + buckets agora — mantém o mock layer intacto para a Fase 3 do dashboard. Confirme se concorda.
+
+## Parte 2 — Dashboard Analytics Premium
+
+Refatorar `src/routes/_app.dashboard.tsx` para um analytics hub de nível Hudl/StatsBomb. Tudo reativo aos switchers de Clube/Time já existentes.
+
+### 2.1 Estrutura visual (grid bento)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Filters bar: Período | Tipo sessão | Posição | Export │
+├──────────┬──────────┬──────────┬──────────┬────────────┤
+│  KPI 1   │  KPI 2   │  KPI 3   │  KPI 4   │   KPI 5    │
+│ Atletas  │ Sessões  │ Distância│ Sprints  │ Vel. Máx   │
+├──────────┴──────────┴──────────┼──────────┴────────────┤
+│  Carga Semanal (AreaChart)     │ Distribuição Posições │
+│  com comparativo média do clube│  (RadialBar/Pie)      │
+├────────────────────────────────┼───────────────────────┤
+│  Top 5 Atletas (ranking card)  │ Intensidade Treinos   │
+│  com sparklines individuais    │  (BarChart stacked)   │
+├────────────────────────────────┼───────────────────────┤
+│  Heatmaps Recentes (carousel)  │ Sessões Recentes      │
+│  thumbnails clicáveis          │  (DataTable)          │
+├────────────────────────────────┴───────────────────────┤
+│  Comparativo Atleta vs Média Time (radar chart)        │
+└────────────────────────────────────────────────────────┘
 ```
 
-**Entidades hierárquicas** — toda Session pertence a Athlete → Team → Club. Os services aceitam filtros `clubId`/`teamId` para refletir o switcher ativo.
+### 2.2 Componentes novos (`src/components/dashboard/`)
 
-## 2. Stores Zustand
+- `DashboardFilters.tsx` — período (7d/30d/temporada), tipo sessão, posição. Estado via `useState` + URL search params.
+- `KpiGrid.tsx` — 5 StatCards com trend % vs período anterior.
+- `WeeklyLoadChart.tsx` — AreaChart com linha de média do clube sobreposta.
+- `PositionDistributionChart.tsx` — RadialBarChart (Recharts).
+- `IntensityChart.tsx` — BarChart stacked (baixa/média/alta intensidade).
+- `AthleteRankingCard.tsx` — Top 5 por distância/sprints com sparkline mini.
+- `RecentHeatmapsCarousel.tsx` — embla-carousel com thumbnails (usa `heatmap-preview.jpg` existente como mock).
+- `RecentSessionsTable.tsx` — tabela com badges semânticos (intensidade, status processing/processed).
+- `AthleteComparisonRadar.tsx` — RadarChart com 6 dimensões físicas, atleta selecionado vs média.
 
-- `authStore` — usuário atual, role (`admin | club | coach | athlete`), helpers `hasRole`, `hasPermission`
-- `clubStore` — `currentClubId`, lista de clubes do usuário, `setCurrentClub()`
-- `teamStore` — `currentTeamId` (escopo ao clube ativo), `setCurrentTeam()`
-- `athleteStore`, `sessionStore` — caches locais + filtros ativos
-- `notificationStore` — toasts/feed in-app
+### 2.3 Data layer (mocks)
 
-Trocar clube ou time **invalida queries** dependentes via `queryClient.invalidateQueries` → dashboard, atletas, sessões e heatmaps se atualizam automaticamente.
+Estender `src/mocks/data.ts`:
 
-## 3. Sidebar Premium (Refatorar `AppShell`)
+- Métricas físicas mais ricas por atleta (acceleration, deceleration, HSR distance, PSE histórico)
+- Histórico de 8 semanas de carga por atleta (para sparklines + trend)
+- Função `computeAggregates(scope, period)` para KPIs derivados
 
-Topo da sidebar:
+Estender `src/hooks/queries.ts`:
 
-```text
-┌──────────────────────────┐
-│ [Logo] Grêmio Academy ▼  │  ← ClubSwitcher (dropdown shadcn)
-│        Sub-17        ▼   │  ← TeamSwitcher (escopo ao clube)
-├──────────────────────────┤
-│ ○ Dashboard              │
-│ ○ Atletas                │
-│ ○ Sessões                │
-│ ○ Heatmaps               │
-│ ○ Relatórios             │
-│ ○ Campos                 │
-│ ○ Configurações          │
-└──────────────────────────┘
-```
+- `useDashboardKpis(period)`
+- `useWeeklyLoad(period)`
+- `useAthleteRanking(metric, n)`
+- `useAthleteComparison(athleteId)`
 
-- Switchers usam `DropdownMenu` shadcn com avatares dos clubes
-- Sidebar colapsável (modo `w-16` apenas ícones) com toggle persistido
-- Item ativo: glow `--shadow-glow` + barra lateral neon
-- Hover: lift sutil + transition Framer Motion
-- Bottom: botão "Nova sessão" + perfil compacto
+Todos reagem a `clubId`/`teamId` via `useScope` (já implementado).
 
-## 4. Header Global
+### 2.4 Estados premium
 
-- **Breadcrumbs dinâmicos** (Clube › Time › Página)
-- **Busca global** (`Cmd+K`) — `Command` shadcn com atalhos para atletas/sessões mockados
-- **Sino de notificações** — popover com feed do `notificationStore`
-- **Status do sistema** — chip verde "Operacional"
-- **Avatar do treinador** — dropdown com perfil/logout
+- **Loading:** skeleton shimmer custom (gradient neon sutil) em cada widget, não bloco genérico.
+- **Empty:** ilustração + CTA "Importar primeira sessão" quando scope vazio.
+- **Animations:** Framer Motion stagger nos cards (delay incremental 0.05s), hover lift + glow nos KPIs, número animado (count-up) nos valores KPI.
 
-## 5. Rotas
+### 2.5 Visual / tokens
 
-Adicionar/renomear para alinhar à hierarquia:
-
-| Rota | Conteúdo |
-|---|---|
-| `/_app/dashboard` | KPIs globais filtrados por clube/time ativo |
-| `/_app/clubs` | **NOVA** — lista de clubes, cards com times/atletas |
-| `/_app/teams` | **NOVA** — times do clube ativo, gestão de elenco |
-| `/_app/athletes` | Tabela premium com filtro por time |
-| `/_app/sessions` | Lista + drawer de detalhes (mock) |
-| `/_app/heatmaps` | Galeria de heatmaps mockados |
-| `/_app/reports` | Relatórios PDF mockados |
-| `/_app/fields` | Cadastro de campos |
-| `/_app/settings` | Perfil, clube, integrações, billing (stub) |
-| `/auth` | Visual de login (já existe — manter) |
-
-## 6. Dashboard Atualizado
-
-Cards mockados reagindo ao switcher:
-- Clubes ativos / Times ativos / Atletas ativos
-- Sessões semanais / Distância média / Sprints / PSE médio
-- Gráficos Recharts: carga semanal (Area), distribuição por posição (Pie), top sprinters (Bar)
-- Tabela "Últimas sessões" premium com badges de intensidade
-
-## 7. Design System (consolidar)
-
-Garantir tokens em `src/styles.css` e componentes base padronizados:
-- `StatCard`, `DataTable`, `EmptyState`, `PageHeader`, `Section`
-- Badges semânticas (success/warning/danger/info) com glow sutil
-- Skeletons premium para loading states
-- Toasts via `sonner` (já presente)
-- Motion: stagger nos cards do dashboard, fade nas trocas de rota
-
-## 8. Arquitetura Preparada para o Futuro
-
-- `api/client.ts` com interceptor de token + tratamento de erro centralizado
-- `hooks/useRealtime.ts` stub (placeholder para WebSocket)
-- `services/*` retornando Promises (mock hoje, fetch amanhã)
-- Tipos compartilhados em `src/types` espelhando o schema Supabase futuro
-
----
-
-## Fora do escopo desta fase
-
-- Upload GPX real, FastAPI, Supabase, billing, IA, WebSocket real, RBAC enforçado no backend
-- Mobile-first (apenas desktop + tablet básico)
-- Login funcional (mantém o visual atual)
-
----
+- Reaproveitar `glass`, `--shadow-glow`, `--primary` já em `styles.css`.
+- Adicionar tokens: `--chart-grid`, `--intensity-low/med/high`, gradient overlays para cards premium.
+- Tipografia: números em font-display (já configurada), tabular-nums para alinhamento.
 
 ## Detalhes técnicos
 
-- **Stack**: continua TanStack Router (não React Router) + TanStack Query + Zustand + shadcn + Framer Motion + Recharts
-- **Mocks**: arquivos TS em `src/mocks/` retornados pelos services com `setTimeout` para simular latência
-- **Persistência do switcher**: `localStorage` via Zustand `persist` middleware
-- **Type-safety**: cada service tipado com as entidades de `src/types`
+- **Sem mudança de rotas** — apenas refatora `_app.dashboard.tsx`.
+- **Sem backend real** — toda data via service mock + TanStack Query (latência 180ms já mantém UX de loading realista).
+- **Filtros** persistem em URL via `Route.useSearch` do TanStack Router (preparar `validateSearch`).
+- **Recharts** já instalado; embla-carousel verificar no `package.json` (instalar se faltar).
 
-Posso seguir com a implementação?
+## Fora de escopo desta fase
+
+- Auth real / login funcional
+- Upload GPX real
+- Tabelas de domínio no Supabase
+- Edge functions / FastAPI
+- Realtime websocket
+- Export PDF/CSV (botão visível, mas no-op com toast)
+
+---
+
+Confirme:
+
+1. Pode habilitar Lovable Cloud agora (somente conexão + buckets, sem migrations de domínio)? sim
+2. Pode seguir com o dashboard conforme layout acima, ou prefere ajustar algum widget? sim
