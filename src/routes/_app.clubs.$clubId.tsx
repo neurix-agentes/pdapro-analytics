@@ -199,7 +199,7 @@ function ClubDetailPage() {
   );
 }
 
-function Kpi({ icon: Icon, label, value, accent }: { icon: React.ComponentType<{ className?: string }>; label: string; value: number; accent?: string }) {
+function Kpi({ icon: Icon, label, value, accent }: { icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; label: string; value: number; accent?: string }) {
   return (
     <div className="glass rounded-2xl p-4">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
