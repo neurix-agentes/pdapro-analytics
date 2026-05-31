@@ -17,23 +17,31 @@ export interface Club {
   name: string;
   short_name: string;
   city: string;
+  state?: string;
+  country?: string;
   logo_url?: string;
   primary_color?: string;
+  secondary_color?: string;
+  description?: string;
   active_teams: number;
   active_athletes: number;
+  archived?: boolean;
   created_at: string;
 }
 
 export type AgeCategory =
-  | "Sub-13" | "Sub-15" | "Sub-17" | "Sub-20" | "Profissional" | "Amador";
+  | "Sub-09" | "Sub-11" | "Sub-13" | "Sub-15" | "Sub-17" | "Sub-20"
+  | "Profissional" | "Feminino" | "Society" | "Amador";
 
 export interface Team {
   id: string;
   club_id: string;
   name: string;
-  category: AgeCategory;
+  category: AgeCategory | string;
   coach_id?: string;
   athletes_count: number;
+  season?: string;
+  archived?: boolean;
   created_at: string;
 }
 
@@ -62,6 +70,15 @@ export interface Athlete {
   active: boolean;
 }
 
+export interface TransferRecord {
+  id: string;
+  athlete_id: string;
+  from_team_id: string;
+  to_team_id: string;
+  date: string;
+  reason?: string;
+}
+
 export type SessionType = "treino" | "jogo" | "amistoso" | "avaliacao";
 export type SessionStatus = "processed" | "processing" | "queued" | "failed";
 
@@ -71,7 +88,7 @@ export interface SessionMetrics {
   top_speed_kmh: number;
   avg_speed_kmh: number;
   high_intensity_min: number;
-  pse?: number; // percepção subjetiva de esforço
+  pse?: number;
 }
 
 export interface Session {
@@ -82,7 +99,7 @@ export interface Session {
   field_id?: string;
   session_type: SessionType;
   status: SessionStatus;
-  date: string; // ISO
+  date: string;
   duration_min: number;
   gps_file_url?: string;
   metrics?: SessionMetrics;

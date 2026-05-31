@@ -9,6 +9,7 @@ import { ClubSwitcher } from "@/components/app/ClubSwitcher";
 import { TeamSwitcher } from "@/components/app/TeamSwitcher";
 import { NotificationsPopover } from "@/components/app/NotificationsPopover";
 import { Breadcrumbs } from "@/components/app/Breadcrumbs";
+import { SeasonSwitcher } from "@/components/app/SeasonSwitcher";
 import { useSidebarStore, useAuthStore } from "@/store";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -63,6 +64,7 @@ export function AppShell() {
             <>
               <ClubSwitcher />
               <TeamSwitcher />
+              <SeasonSwitcher />
             </>
           )}
         </div>
