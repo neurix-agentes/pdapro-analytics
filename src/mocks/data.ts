@@ -17,9 +17,13 @@ export const mockClubs: Club[] = [
     name: "Grêmio Academy",
     short_name: "GAC",
     city: "Porto Alegre",
+    state: "RS",
+    country: "Brasil",
     primary_color: "#00FF88",
-    active_teams: 3,
-    active_athletes: 64,
+    secondary_color: "#0A2540",
+    description: "Centro de formação focado em categorias de base e desenvolvimento atlético de alto rendimento.",
+    active_teams: 5,
+    active_athletes: 112,
     created_at: "2023-01-12",
   },
   {
@@ -27,9 +31,13 @@ export const mockClubs: Club[] = [
     name: "Internacional Base",
     short_name: "INT",
     city: "Porto Alegre",
+    state: "RS",
+    country: "Brasil",
     primary_color: "#FF4D4D",
-    active_teams: 2,
-    active_athletes: 41,
+    secondary_color: "#111111",
+    description: "Academia profissional com foco em desempenho físico e analytics esportivo.",
+    active_teams: 4,
+    active_athletes: 86,
     created_at: "2023-06-04",
   },
   {
@@ -37,21 +45,38 @@ export const mockClubs: Club[] = [
     name: "Juventude FC",
     short_name: "JUV",
     city: "Caxias do Sul",
+    state: "RS",
+    country: "Brasil",
     primary_color: "#3B82F6",
-    active_teams: 1,
-    active_athletes: 22,
+    secondary_color: "#0D1B2A",
+    description: "Clube tradicional com programa de tracking para todas as categorias.",
+    active_teams: 3,
+    active_athletes: 58,
     created_at: "2024-02-18",
   },
 ];
 
 export const mockTeams: Team[] = [
-  { id: "t_gac_sub17", club_id: "c_gremio", name: "Sub-17", category: "Sub-17", coach_id: "co_carlos", athletes_count: 24, created_at: "2024-01-10" },
-  { id: "t_gac_sub20", club_id: "c_gremio", name: "Sub-20", category: "Sub-20", coach_id: "co_marcos", athletes_count: 22, created_at: "2024-01-10" },
-  { id: "t_gac_prof",  club_id: "c_gremio", name: "Profissional", category: "Profissional", coach_id: "co_andre", athletes_count: 18, created_at: "2023-08-01" },
-  { id: "t_int_sub15", club_id: "c_internacional", name: "Sub-15", category: "Sub-15", coach_id: "co_julio", athletes_count: 20, created_at: "2024-03-05" },
-  { id: "t_int_sub20", club_id: "c_internacional", name: "Sub-20", category: "Sub-20", coach_id: "co_rafa", athletes_count: 21, created_at: "2024-03-05" },
-  { id: "t_juv_sub17", club_id: "c_juventude", name: "Sub-17", category: "Sub-17", coach_id: "co_diego", athletes_count: 22, created_at: "2024-04-22" },
+  // Grêmio
+  { id: "t_gac_sub11", club_id: "c_gremio", name: "Sub-11", category: "Sub-11", coach_id: "co_carlos", athletes_count: 18, season: "2025/26", created_at: "2024-01-10" },
+  { id: "t_gac_sub13", club_id: "c_gremio", name: "Sub-13", category: "Sub-13", coach_id: "co_marcos", athletes_count: 20, season: "2025/26", created_at: "2024-01-10" },
+  { id: "t_gac_sub17", club_id: "c_gremio", name: "Sub-17", category: "Sub-17", coach_id: "co_carlos", athletes_count: 24, season: "2025/26", created_at: "2024-01-10" },
+  { id: "t_gac_sub20", club_id: "c_gremio", name: "Sub-20", category: "Sub-20", coach_id: "co_marcos", athletes_count: 22, season: "2025/26", created_at: "2024-01-10" },
+  { id: "t_gac_prof",  club_id: "c_gremio", name: "Profissional", category: "Profissional", coach_id: "co_andre", athletes_count: 18, season: "2025/26", created_at: "2023-08-01" },
+  { id: "t_gac_fem",   club_id: "c_gremio", name: "Feminino Principal", category: "Feminino", coach_id: "co_andre", athletes_count: 20, season: "2025/26", created_at: "2024-07-15" },
+  // Internacional
+  { id: "t_int_sub13", club_id: "c_internacional", name: "Sub-13", category: "Sub-13", coach_id: "co_julio", athletes_count: 18, season: "2025/26", created_at: "2024-03-05" },
+  { id: "t_int_sub15", club_id: "c_internacional", name: "Sub-15", category: "Sub-15", coach_id: "co_julio", athletes_count: 20, season: "2025/26", created_at: "2024-03-05" },
+  { id: "t_int_sub20", club_id: "c_internacional", name: "Sub-20", category: "Sub-20", coach_id: "co_rafa", athletes_count: 21, season: "2025/26", created_at: "2024-03-05" },
+  { id: "t_int_soc",   club_id: "c_internacional", name: "Society Master", category: "Society", coach_id: "co_rafa", athletes_count: 14, season: "2025/26", created_at: "2024-05-10" },
+  // Juventude
+  { id: "t_juv_sub15", club_id: "c_juventude", name: "Sub-15", category: "Sub-15", coach_id: "co_diego", athletes_count: 18, season: "2025/26", created_at: "2024-04-22" },
+  { id: "t_juv_sub17", club_id: "c_juventude", name: "Sub-17", category: "Sub-17", coach_id: "co_diego", athletes_count: 22, season: "2025/26", created_at: "2024-04-22" },
+  { id: "t_juv_fem",   club_id: "c_juventude", name: "Feminino Sub-20", category: "Feminino", coach_id: "co_diego", athletes_count: 16, season: "2025/26", created_at: "2024-09-01" },
 ];
+
+export const mockTransfers: import("@/types").TransferRecord[] = [];
+
 
 export const mockCoaches: Coach[] = [
   { id: "co_carlos", club_id: "c_gremio", name: "Carlos Tavares", email: "carlos@gac.com" },
