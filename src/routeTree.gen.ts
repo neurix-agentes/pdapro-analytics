@@ -21,6 +21,7 @@ import { Route as AppFieldsRouteImport } from './routes/_app.fields'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppClubsRouteImport } from './routes/_app.clubs'
 import { Route as AppAthletesRouteImport } from './routes/_app.athletes'
+import { Route as AppClubsClubIdRouteImport } from './routes/_app.clubs.$clubId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -81,12 +82,17 @@ const AppAthletesRoute = AppAthletesRouteImport.update({
   path: '/athletes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClubsClubIdRoute = AppClubsClubIdRouteImport.update({
+  id: '/$clubId',
+  path: '/$clubId',
+  getParentRoute: () => AppClubsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/athletes': typeof AppAthletesRoute
-  '/clubs': typeof AppClubsRoute
+  '/clubs': typeof AppClubsRouteWithChildren
   '/dashboard': typeof AppDashboardRoute
   '/fields': typeof AppFieldsRoute
   '/heatmaps': typeof AppHeatmapsRoute
@@ -94,12 +100,13 @@ export interface FileRoutesByFullPath {
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
   '/teams': typeof AppTeamsRoute
+  '/clubs/$clubId': typeof AppClubsClubIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/athletes': typeof AppAthletesRoute
-  '/clubs': typeof AppClubsRoute
+  '/clubs': typeof AppClubsRouteWithChildren
   '/dashboard': typeof AppDashboardRoute
   '/fields': typeof AppFieldsRoute
   '/heatmaps': typeof AppHeatmapsRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
   '/teams': typeof AppTeamsRoute
+  '/clubs/$clubId': typeof AppClubsClubIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,7 +122,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/_app/athletes': typeof AppAthletesRoute
-  '/_app/clubs': typeof AppClubsRoute
+  '/_app/clubs': typeof AppClubsRouteWithChildren
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/fields': typeof AppFieldsRoute
   '/_app/heatmaps': typeof AppHeatmapsRoute
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_app/sessions': typeof AppSessionsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/teams': typeof AppTeamsRoute
+  '/_app/clubs/$clubId': typeof AppClubsClubIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/settings'
     | '/teams'
+    | '/clubs/$clubId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/settings'
     | '/teams'
+    | '/clubs/$clubId'
   id:
     | '__root__'
     | '/'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_app/sessions'
     | '/_app/settings'
     | '/_app/teams'
+    | '/_app/clubs/$clubId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -258,12 +270,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAthletesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clubs/$clubId': {
+      id: '/_app/clubs/$clubId'
+      path: '/$clubId'
+      fullPath: '/clubs/$clubId'
+      preLoaderRoute: typeof AppClubsClubIdRouteImport
+      parentRoute: typeof AppClubsRoute
+    }
   }
 }
 
+interface AppClubsRouteChildren {
+  AppClubsClubIdRoute: typeof AppClubsClubIdRoute
+}
+
+const AppClubsRouteChildren: AppClubsRouteChildren = {
+  AppClubsClubIdRoute: AppClubsClubIdRoute,
+}
+
+const AppClubsRouteWithChildren = AppClubsRoute._addFileChildren(
+  AppClubsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAthletesRoute: typeof AppAthletesRoute
-  AppClubsRoute: typeof AppClubsRoute
+  AppClubsRoute: typeof AppClubsRouteWithChildren
   AppDashboardRoute: typeof AppDashboardRoute
   AppFieldsRoute: typeof AppFieldsRoute
   AppHeatmapsRoute: typeof AppHeatmapsRoute
@@ -275,7 +306,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAthletesRoute: AppAthletesRoute,
-  AppClubsRoute: AppClubsRoute,
+  AppClubsRoute: AppClubsRouteWithChildren,
   AppDashboardRoute: AppDashboardRoute,
   AppFieldsRoute: AppFieldsRoute,
   AppHeatmapsRoute: AppHeatmapsRoute,
@@ -295,3 +326,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
