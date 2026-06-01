@@ -5,7 +5,9 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { TeamsTable } from "@/components/teams/TeamsTable";
 import { TeamFormDialog } from "@/components/teams/TeamFormDialog";
 import { useTeams, useClubs, useCoaches } from "@/hooks/queries";
-import { useTeamStore, useClubStore } from "@/store";
+import { useClubStore } from "@/store";
+import { useArchiveTeam } from "@/hooks/mutations";
+
 import type { Team } from "@/types";
 import { toast } from "sonner";
 
@@ -18,7 +20,7 @@ function TeamsPage() {
   const { data: teams = [] } = useTeams();
   const { data: clubs = [] } = useClubs();
   const { data: coaches = [] } = useCoaches();
-  const archive = useTeamStore((s) => s.archiveTeam);
+  const archiveM = useArchiveTeam();
   const currentClub = useClubStore((s) => s.currentClubId);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("");
@@ -82,9 +84,12 @@ function TeamsPage() {
         coaches={coaches}
         onEdit={(t) => { setEditing(t); setOpen(true); }}
         onArchive={(t) => {
-          archive(t.id);
-          toast.success(t.archived ? "Time reativado." : "Time arquivado.");
+          archiveM.mutate({ id: t.id, current: !!t.archived }, {
+            onSuccess: () => toast.success(t.archived ? "Time reativado." : "Time arquivado."),
+            onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
+          });
         }}
+
       />
 
       <TeamFormDialog open={open} onOpenChange={setOpen} team={editing} defaultClubId={currentClub ?? undefined} />

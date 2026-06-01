@@ -1,10 +1,13 @@
 // PDA Sport — Service layer
-// Retorna Promises mockadas hoje; trocará por apiFetch no futuro.
+// clubs / teams / coaches → Supabase real
+// athletes / sessions / heatmaps / reports / fields → mocks (próximas fases)
 
 import { mockResponse } from "@/api/client";
 import {
-  mockAthletes, mockClubs, mockCoaches, mockFields, mockHeatmaps, mockReports, mockSessions, mockTeams, mockUser,
+  mockAthletes, mockFields, mockHeatmaps, mockReports, mockSessions,
 } from "@/mocks/data";
+import { supabase } from "@/integrations/supabase/client";
+import type { Club, Team, Coach, Athlete, Session as PdaSession, Heatmap, Report, Field } from "@/types";
 
 export interface Scope { clubId?: string | null; teamId?: string | null }
 
@@ -14,47 +17,209 @@ const inScope = <T extends { club_id: string; team_id?: string }>(s: Scope) => (
   return true;
 };
 
-export const authService = {
-  currentUser: () => mockResponse(mockUser),
-};
-
+/* ===================== CLUBS ===================== */
 export const clubsService = {
-  list: () => mockResponse(mockClubs),
-  get: (id: string) => mockResponse(mockClubs.find((c) => c.id === id) ?? null),
+  async list(): Promise<Club[]> {
+    const { data, error } = await supabase
+      .from("clubs")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapClubRow);
+  },
+  async get(id: string): Promise<Club | null> {
+    const { data, error } = await supabase.from("clubs").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? mapClubRow(data) : null;
+  },
+  async create(
+    payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">,
+  ): Promise<Club> {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) throw new Error("Não autenticado.");
+    const { data, error } = await supabase
+      .from("clubs")
+      .insert({
+        name: payload.name,
+        short_name: payload.short_name,
+        city: payload.city,
+        state: payload.state,
+        country: payload.country,
+        primary_color: payload.primary_color,
+        secondary_color: payload.secondary_color,
+        description: payload.description,
+        logo_url: payload.logo_url,
+        archived: payload.archived ?? false,
+        created_by: u.user.id,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return mapClubRow(data);
+  },
+  async update(id: string, patch: Partial<Club>): Promise<void> {
+    const { error } = await supabase
+      .from("clubs")
+      .update({
+        name: patch.name,
+        short_name: patch.short_name,
+        city: patch.city,
+        state: patch.state,
+        country: patch.country,
+        primary_color: patch.primary_color,
+        secondary_color: patch.secondary_color,
+        description: patch.description,
+        logo_url: patch.logo_url,
+        archived: patch.archived,
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+  async toggleArchive(id: string, current: boolean): Promise<void> {
+    const { error } = await supabase.from("clubs").update({ archived: !current }).eq("id", id);
+    if (error) throw new Error(error.message);
+  },
 };
 
+function mapClubRow(r: Record<string, unknown>): Club {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    short_name: (r.short_name as string) ?? "",
+    city: (r.city as string) ?? "",
+    state: (r.state as string | null) ?? undefined,
+    country: (r.country as string | null) ?? undefined,
+    logo_url: (r.logo_url as string | null) ?? undefined,
+    primary_color: (r.primary_color as string | null) ?? undefined,
+    secondary_color: (r.secondary_color as string | null) ?? undefined,
+    description: (r.description as string | null) ?? undefined,
+    active_teams: 0,
+    active_athletes: 0,
+    archived: (r.archived as boolean | null) ?? false,
+    created_at: (r.created_at as string) ?? new Date().toISOString(),
+  };
+}
+
+/* ===================== TEAMS ===================== */
 export const teamsService = {
-  list: (s: Scope = {}) => mockResponse(mockTeams.filter((t) => !s.clubId || t.club_id === s.clubId)),
-  get: (id: string) => mockResponse(mockTeams.find((t) => t.id === id) ?? null),
+  async list(s: Scope = {}): Promise<Team[]> {
+    let q = supabase.from("teams").select("*").order("created_at", { ascending: false });
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapTeamRow);
+  },
+  async get(id: string): Promise<Team | null> {
+    const { data, error } = await supabase.from("teams").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? mapTeamRow(data) : null;
+  },
+  async create(payload: Omit<Team, "id" | "created_at" | "athletes_count">): Promise<Team> {
+    const { data, error } = await supabase
+      .from("teams")
+      .insert({
+        club_id: payload.club_id,
+        name: payload.name,
+        category: payload.category,
+        coach_id: payload.coach_id || null,
+        season: payload.season,
+        archived: payload.archived ?? false,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return mapTeamRow(data);
+  },
+  async update(id: string, patch: Partial<Team>): Promise<void> {
+    const { error } = await supabase
+      .from("teams")
+      .update({
+        name: patch.name,
+        category: patch.category,
+        coach_id: patch.coach_id || null,
+        season: patch.season,
+        archived: patch.archived,
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+  async toggleArchive(id: string, current: boolean): Promise<void> {
+    const { error } = await supabase.from("teams").update({ archived: !current }).eq("id", id);
+    if (error) throw new Error(error.message);
+  },
 };
 
+function mapTeamRow(r: Record<string, unknown>): Team {
+  return {
+    id: r.id as string,
+    club_id: r.club_id as string,
+    name: r.name as string,
+    category: (r.category as string) ?? "Profissional",
+    coach_id: (r.coach_id as string | null) ?? undefined,
+    athletes_count: 0,
+    season: (r.season as string | null) ?? undefined,
+    archived: (r.archived as boolean | null) ?? false,
+    created_at: (r.created_at as string) ?? new Date().toISOString(),
+  };
+}
+
+/* ===================== COACHES ===================== */
 export const coachesService = {
-  list: (s: Scope = {}) => mockResponse(mockCoaches.filter((c) => !s.clubId || c.club_id === s.clubId)),
+  async list(s: Scope = {}): Promise<Coach[]> {
+    let q = supabase.from("coaches").select("*").order("name");
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      club_id: r.club_id,
+      name: r.name,
+      email: r.email ?? "",
+      avatar_url: r.avatar_url ?? undefined,
+    }));
+  },
+  async create(payload: Omit<Coach, "id">): Promise<Coach> {
+    const { data, error } = await supabase
+      .from("coaches")
+      .insert({ club_id: payload.club_id, name: payload.name, email: payload.email, avatar_url: payload.avatar_url })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: data.id, club_id: data.club_id, name: data.name, email: data.email ?? "", avatar_url: data.avatar_url ?? undefined };
+  },
 };
 
+/* ===================== AUTH (membership) ===================== */
+export const membershipService = {
+  async myClubIds(): Promise<string[]> {
+    const { data, error } = await supabase.from("club_members").select("club_id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => r.club_id);
+  },
+};
+
+/* =====================================================
+   MOCKED (próximas fases) — athletes/sessions/heatmaps/reports/fields
+   ===================================================== */
 export const athletesService = {
-  list: (s: Scope = {}) => mockResponse(mockAthletes.filter(inScope(s))),
-  get: (id: string) => mockResponse(mockAthletes.find((a) => a.id === id) ?? null),
+  list: (s: Scope = {}): Promise<Athlete[]> => mockResponse(mockAthletes.filter(inScope(s))),
+  get: (id: string): Promise<Athlete | null> => mockResponse(mockAthletes.find((a) => a.id === id) ?? null),
 };
-
 export const sessionsService = {
-  list: (s: Scope = {}) => mockResponse(mockSessions.filter(inScope(s))),
-  recent: (s: Scope = {}, n = 8) =>
+  list: (s: Scope = {}): Promise<PdaSession[]> => mockResponse(mockSessions.filter(inScope(s))),
+  recent: (s: Scope = {}, n = 8): Promise<PdaSession[]> =>
     mockResponse(
       [...mockSessions.filter(inScope(s))]
         .sort((a, b) => +new Date(b.date) - +new Date(a.date))
         .slice(0, n),
     ),
 };
-
 export const heatmapsService = {
-  list: (s: Scope = {}) => mockResponse(mockHeatmaps.filter(inScope(s))),
+  list: (s: Scope = {}): Promise<Heatmap[]> => mockResponse(mockHeatmaps.filter(inScope(s))),
 };
-
 export const reportsService = {
-  list: (s: Scope = {}) => mockResponse(mockReports.filter(inScope(s))),
+  list: (s: Scope = {}): Promise<Report[]> => mockResponse(mockReports.filter(inScope(s))),
 };
-
 export const fieldsService = {
-  list: (s: Scope = {}) => mockResponse(mockFields.filter((f) => !s.clubId || f.club_id === s.clubId)),
+  list: (s: Scope = {}): Promise<Field[]> => mockResponse(mockFields.filter((f) => !s.clubId || f.club_id === s.clubId)),
 };

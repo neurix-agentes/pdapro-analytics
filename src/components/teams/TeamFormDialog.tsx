@@ -4,9 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useTeamStore, useClubStore, useSeasonStore } from "@/store";
+import { useClubStore, useSeasonStore } from "@/store";
 import { useClubs, useCoaches } from "@/hooks/queries";
+import { useCreateTeam, useUpdateTeam } from "@/hooks/mutations";
 import { toast } from "sonner";
+
 import type { Team } from "@/types";
 
 const CATEGORIES = ["Sub-09", "Sub-11", "Sub-13", "Sub-15", "Sub-17", "Sub-20", "Profissional", "Feminino", "Society"];
@@ -19,8 +21,9 @@ interface Props {
 }
 
 export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Props) {
-  const create = useTeamStore((s) => s.createTeam);
-  const update = useTeamStore((s) => s.updateTeam);
+  const createM = useCreateTeam();
+  const updateM = useUpdateTeam();
+
   const currentClub = useClubStore((s) => s.currentClubId);
   const currentSeason = useSeasonStore((s) => s.currentSeason);
   const seasons = useSeasonStore((s) => s.seasons);
@@ -52,7 +55,7 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
     }
   }, [open, team, defaultClubId, currentClub, currentSeason]);
 
-  function submit() {
+  async function submit() {
     const finalCategory = isCustom ? customCategory.trim() : category;
     if (!name.trim() || !clubId || !finalCategory) {
       toast.error("Preencha nome, categoria e clube.");
@@ -65,15 +68,20 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
       coach_id: coachId || undefined,
       season,
     };
-    if (team) {
-      update(team.id, payload);
-      toast.success("Time atualizado.");
-    } else {
-      create(payload);
-      toast.success("Time criado.");
+    try {
+      if (team) {
+        await updateM.mutateAsync({ id: team.id, patch: payload });
+        toast.success("Time atualizado.");
+      } else {
+        await createM.mutateAsync({ ...payload, archived: false });
+        toast.success("Time criado.");
+      }
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao salvar time.");
     }
-    onOpenChange(false);
   }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
