@@ -1,132 +1,147 @@
-# Fase 4 — Gestão de Clubes e Times
+## Plano — Logo do Clube + Backend Foundation
 
-Construir o núcleo organizacional da PDA Sport: CRUD premium de clubes e times, páginas de detalhe com abas, gestão de elenco com transferência entre times, e contexto global (clube + time + temporada) persistente em toda a plataforma. Tudo com mocks — sem Supabase real, sem backend.
+Migrar a PDA Sport de mocks para Supabase real: autenticação, banco completo, storage e API layer com upload de logo.
 
-## 1. Modelo de dados e mocks
+---
 
-`**src/types/index.ts**` — estender:
+### 1. Storage — bucket de logos
 
-- `Club`: adicionar `state`, `country`, `secondary_color`, `description`, `archived`, `season`
-- `Team`: adicionar `season`, `archived`
-- `TransferRecord` (novo): `{ id, athlete_id, from_team_id, to_team_id, date, reason }`
+Criar bucket público `club-logos` (junto aos existentes `gps-files`, `heatmaps`, `reports`), com policies:
+- SELECT público (qualquer um vê)
+- INSERT/UPDATE/DELETE: apenas membros do clube (path = `{club_id}/logo.{ext}`)
 
-`**src/mocks/data.ts**` — adicionar:
+Limite 2MB, MIME `image/png` e `image/jpeg`.
 
-- Campos novos nos clubes existentes (estado/país/cor secundária/descrição)
-- Mais times por clube (cobrindo Sub-09, Sub-11, Sub-13, Sub-15, Sub-17, Profissional + Feminino + Society)
-- Array `mockTransfers` inicial
-- Helpers `nextId()`, `countTeamsByClub()`, `countAthletesByClub()`
+---
 
-## 2. Stores (Zustand) — contexto global
+### 2. Banco — schema completo
 
-`**src/store/index.ts**` — estender:
+Tipos enum: `app_role` (`admin`, `club_owner`, `coach`, `athlete`), `session_type`, `session_status`, `position`.
 
-- `clubStore`: adicionar `clubs[]`, `createClub`, `updateClub`, `archiveClub` (mutações locais sobre mock)
-- `teamStore`: adicionar `teams[]`, `createTeam`, `updateTeam`, `archiveTeam`, `transferAthlete(athleteId, toTeamId)`
-- Novo `seasonStore`: `currentSeason` (default `"2025/26"`), `setSeason`, persistido
-- Ao trocar de clube já invalida queries (mantido) e limpa `currentTeamId`
-
-`**src/hooks/queries.ts**` — adicionar `useSeason()` e fazer todos os hooks (`useTeams`, `useAthletes`, `useSessions`, etc.) considerarem `season` no `queryKey` para futura expansão.
-
-## 3. Rotas novas
+Tabelas (todas em `public`, com RLS, GRANTs, triggers `updated_at`):
 
 ```
-src/routes/
-  _app.clubs.tsx          (refatorar: tabela premium + ações)
-  _app.clubs.$clubId.tsx  (NOVA: detalhe com abas)
-  _app.teams.tsx          (refatorar: tabela + filtros)
-  _app.teams.$teamId.tsx  (NOVA: management com 4 abas)
+profiles          (user_id, name, email, avatar_url)
+user_roles        (user_id, role)                              -- roles globais
+clubs             (id, name, short_name, city, state, country,
+                   primary_color, secondary_color, description,
+                   logo_url, archived, created_by)
+club_members      (club_id, user_id, role)                     -- multi-tenant
+teams             (id, club_id, name, category, coach_id,
+                   season, archived)
+coaches           (id, club_id, name, email, avatar_url)
+athletes          (id, club_id, team_id, name, age, position,
+                   jersey_number, photo_url, height_cm,
+                   weight_kg, active)
+fields            (id, club_id, name, width_m, length_m,
+                   surface, gps_lat, gps_lng)
+sessions          (id, club_id, team_id, athlete_id, field_id,
+                   session_type, status, date, duration_min,
+                   gps_file_url, metrics jsonb)
+heatmaps          (id, club_id, session_id, athlete_id,
+                   heatmap_png_url, thumbnail_url, metrics jsonb)
+reports           (id, club_id, team_id, athlete_id,
+                   title, period, report_pdf_url)
+transfers         (id, athlete_id, from_team_id, to_team_id,
+                   date, reason)
 ```
 
-## 4. Módulo Clubes
+**RLS (security definer `is_club_member(uid, club_id)` para evitar recursão):**
+- `profiles`: leitura/atualização do próprio usuário.
+- `clubs`: SELECT/UPDATE se `is_club_member`; INSERT por usuário autenticado (vira owner).
+- `club_members`: SELECT pelos próprios membros; INSERT pelo owner do clube.
+- Demais tabelas: CRUD escopado por `is_club_member(auth.uid(), club_id)`.
 
-### `/clubs` — listagem
+**Triggers:**
+- `on_auth_user_created` → cria `profiles` automaticamente.
+- `on_club_created` → insere criador em `club_members` como `owner`.
+- `updated_at` em todas.
 
-- Toggle de visualização **Grid** (cards atuais) / **Tabela** (nova, default)
-- Tabela: logo · nome · cidade · times · atletas · criado em · status · ações
-- Botão **"Novo clube"** abre `ClubFormDialog`
-- Ações por linha (dropdown): Ver detalhes · Editar · Arquivar
-- Busca por nome/cidade, filtro por estado, filtro arquivados
+---
 
-### `ClubFormDialog` (`src/components/clubs/ClubFormDialog.tsx`)
+### 3. Auth
 
-- Tabs internas: **Identidade** (nome, cidade, estado, país) · **Marca** (cor primária + secundária com swatches, upload de escudo mock) · **Sobre** (descrição)
-- Validação com `react-hook-form` + `zod`
-- Submit chama `clubStore.createClub` / `updateClub`, `toast` de sucesso
+- Habilitar email/senha + Google (via `configure_social_auth` com `providers: ["google"]`).
+- Sem auto-confirm (verificação de e-mail obrigatória).
+- HIBP password check ligado.
 
-### `/clubs/:clubId` — detalhe
+Páginas:
+- `/auth` → reescrever com `supabase.auth.signInWithPassword`, `signUp` e botão Google via `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`.
+- `/onboarding` → nova rota guiada (3 passos): **criar 1º clube** (com logo) → **criar 1º time** → concluído. Acionada quando usuário autenticado não possui `club_members`.
+- Layout `_authenticated` com `beforeLoad` redirecionando para `/auth`.
+- `__root.tsx`: `onAuthStateChange` invalidando React Query.
 
-- Header: escudo grande com glow da cor do clube, nome display, cidade/estado, badge "Ativo"
-- 4 KPI cards: total atletas · times · sessões · heatmaps · distância acumulada (km)
-- Tabs: **Visão Geral** (mini-gráficos reutilizando dashboard widgets escopados ao clube) · **Times** (grid de times do clube + CTA novo time) · **Treinadores** (cards) · **Estatísticas** (placeholder com `PageStub` rico)
+---
 
-## 5. Módulo Times
+### 4. API Layer — substituir mocks por Supabase
 
-### `/teams` — listagem
+Reescrever `src/services/index.ts`: cada `*Service.list/get/create/update/archive` passa a chamar `supabase.from(...).select/insert/update`.
 
-- Tabela: nome · categoria · clube · atletas · treinador · temporada · ações
-- Filtros: categoria (chips), clube (se `clubId` global == null), temporada
-- Busca instantânea
-- Botão **"Novo time"** → `TeamFormDialog`
+Stores (`src/store/index.ts`):
+- `useAuthStore`: derivado de `supabase.auth.getSession()` + listener (não mais `mockUser`).
+- `useClubStore.createClub/updateClub/archiveClub`: viram **mutations assíncronas** que chamam `clubsService` + `queryClient.invalidateQueries(["clubs"])`.
+- `useTeamStore.*` idem.
+- Manter `currentClubId`, `currentTeamId`, `currentSeason` apenas como UI state persistido.
 
-### `TeamFormDialog` (`src/components/teams/TeamFormDialog.tsx`)
+Hooks (`src/hooks/queries.ts`): manter assinaturas (`useClubs`, `useTeams`, etc.) — só a fonte muda. Adicionar `useCurrentUserClubs()` filtrando por membership.
 
-- Campos: nome, categoria (Select com presets Sub-09/11/13/15/17/Profissional/Feminino/Society + opção **"Personalizado"** com input), clube (Select, pré-preenchido com clube ativo), treinador (Select), temporada
+Remover `src/mocks/data.ts` da árvore de runtime (manter como referência opcional ou deletar).
 
-### `/teams/:teamId` — Team Management
+---
 
-- Header: nome, categoria, clube (breadcrumb-like), temporada, treinador, botão editar
-- 4 KPIs: atletas ativos · sessões realizadas · distância média · velocidade média
-- Tabs:
-  1. **Elenco** — `RosterTable` (foto, nome, posição, idade, jersey, status) com filtros (posição/faixa etária) e busca; ações por linha: Ver perfil · **Transferir** · Remover. Botão "Adicionar atleta" (modal mock).
-  2. **Sessões** — reusar `RecentSessionsTable` escopado ao team
-  3. **Heatmaps** — grid reutilizando `RecentHeatmapsCarousel` em modo galeria
-  4. **Relatórios** — lista simples mock
+### 5. Upload de logo no cadastro do Clube
 
-### `TransferAthleteDialog` (`src/components/teams/TransferAthleteDialog.tsx`)
+`ClubFormDialog.tsx`: nova aba **"Logo"** (entre Marca e Sobre) com:
+- Dropzone + `<input type="file" accept="image/png,image/jpeg">`.
+- Preview circular 96px.
+- Validação: ≤ 2MB, PNG/JPEG.
+- Ao salvar: upload para `club-logos/{clubId}/logo.{ext}` → `getPublicUrl` → grava em `clubs.logo_url`.
+- Botão "Remover logo".
 
-- Visualização: card do atleta · seta animada · select "Time destino" (apenas times do mesmo clube)
-- Mostra "Sub-15 → Sub-17", motivo opcional
-- Confirmação dupla, chama `teamStore.transferAthlete`, registra `mockTransfers`, toast
+Renderizar `logo_url` em:
+- `ClubsTable` (avatar)
+- `ClubSwitcher`
+- `PageHeader` do detalhe do clube
+- Fallback: iniciais coloridas atuais.
 
-## 6. Switchers globais (já existem — ajustes)
+---
 
-- `ClubSwitcher` e `TeamSwitcher` já implementados em `src/components/app/`. Verificar que estão **visíveis em toda a app** (já estão no `AppShell`).
-- Adicionar pequeno **SeasonSwitcher** ao lado do TeamSwitcher (dropdown compacto com 2 temporadas mock).
-- Garantir reset de team ao trocar clube (já feito) + invalidate queries.
+### 6. Detalhes técnicos
 
-## 7. UI / Design
+- **Migração única** via `supabase--migration` (enums + tabelas + GRANTs + RLS + triggers + storage policies + bucket).
+- **Vinculação de identificadores**: trocar IDs string atuais (`c_gremio`) por `uuid` gerado pelo Postgres. Tipos em `src/types/index.ts` continuam `string` (compatível com uuid).
+- **TanStack Query**: stale 30s para listas, `invalidate` em mutations.
+- **Loading states**: skeletons já existentes nas páginas continuam funcionando.
+- **Toast** em todas as mutations (sucesso/erro com `error.message`).
+- **Onboarding empty-state**: se `useCurrentUserClubs()` retorna `[]`, redireciona para `/onboarding`.
 
-- Tabelas: estilo Linear/Vercel — header sticky, linhas com hover sutil, divisores `border-border/40`, ações com `DropdownMenu` em ícone `MoreHorizontal`
-- Cards/dialogs: `glass`, bordas arredondadas `rounded-2xl`, glow discreto na cor primária do clube
-- Microinterações: `framer-motion` stagger nas linhas/cards; transições suaves nas tabs
-- Mantém paleta dark `#050505` / primary `#00FF88` / info `#3B82F6`
-- Empty states ilustrados (sem dados → CTA)
+---
 
-## 8. Fora de escopo (explicitamente)
+### Fora de escopo (continua mock/placeholder até próximas fases)
 
-- Supabase real, FastAPI, upload GPX, heatmap real, websocket, billing, auditoria persistida
-- Upload real de escudo (apenas preview local via `URL.createObjectURL`)
-- Permissões/RBAC (Fase posterior)
+- Upload real de GPX (apenas estrutura da tabela `sessions`).
+- Geração real de heatmap PNG (apenas estrutura).
+- Geração real de PDF de relatório.
+- Billing, RBAC fino, audit log.
+- Realtime websockets.
 
-## Arquivos a criar
+---
 
-- `src/routes/_app.clubs.$clubId.tsx`
-- `src/routes/_app.teams.$teamId.tsx`
-- `src/components/clubs/ClubFormDialog.tsx`
-- `src/components/clubs/ClubsTable.tsx`
-- `src/components/teams/TeamFormDialog.tsx`
-- `src/components/teams/TeamsTable.tsx`
-- `src/components/teams/RosterTable.tsx`
-- `src/components/teams/TransferAthleteDialog.tsx`
-- `src/components/app/SeasonSwitcher.tsx`
+### Arquivos a criar
+- `supabase/migrations/<timestamp>_backend_foundation.sql`
+- `src/routes/onboarding.tsx`
+- `src/components/onboarding/Step1Club.tsx`, `Step2Team.tsx`
+- `src/components/clubs/LogoUploader.tsx`
+- `src/lib/storage.ts` (helpers de upload)
 
-## Arquivos a editar
-
-- `src/types/index.ts` · `src/mocks/data.ts` · `src/store/index.ts` · `src/hooks/queries.ts` · `src/services/index.ts`
-- `src/routes/_app.clubs.tsx` · `src/routes/_app.teams.tsx`
-- `src/components/app/AppShell.tsx` (encaixe do SeasonSwitcher)
-
-## Resultado final
-
-Navegação fluida **Clube → Times → Elenco** com CRUD funcional sobre mocks, transferência visual de atletas entre times do mesmo clube, contexto global persistente (clube + time + temporada) respeitado por dashboard, sessões, heatmaps e relatórios — pronto para plugar Supabase na Fase 5.
+### Arquivos a editar
+- `src/services/index.ts` (Supabase real)
+- `src/store/index.ts` (auth via Supabase, mutations async)
+- `src/hooks/queries.ts` (+ `useCurrentUserClubs`)
+- `src/routes/auth.tsx` (Supabase auth + Google)
+- `src/routes/_app.tsx` (guard auth)
+- `src/routes/__root.tsx` (onAuthStateChange)
+- `src/components/clubs/ClubFormDialog.tsx` (aba Logo + upload)
+- `src/components/clubs/ClubsTable.tsx`, `src/components/app/ClubSwitcher.tsx` (render logo_url)
+- `src/types/index.ts` (campo `logo_url` em Club já existe; revisar)
+- `src/mocks/data.ts` → remover do runtime
