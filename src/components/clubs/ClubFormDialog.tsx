@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useClubStore } from "@/store";
+import { useCreateClub, useUpdateClub } from "@/hooks/mutations";
+import { LogoUploader } from "@/components/clubs/LogoUploader";
 import type { Club } from "@/types";
 
 const PALETTE = ["#00FF88", "#3B82F6", "#FF4D4D", "#FFC857", "#A78BFA", "#F472B6", "#22D3EE", "#F97316"];
@@ -18,9 +19,11 @@ interface Props {
 }
 
 export function ClubFormDialog({ open, onOpenChange, club }: Props) {
-  const create = useClubStore((s) => s.createClub);
-  const update = useClubStore((s) => s.updateClub);
+  const createM = useCreateClub();
+  const updateM = useUpdateClub();
   const [name, setName] = useState("");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
   const [shortName, setShortName] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
