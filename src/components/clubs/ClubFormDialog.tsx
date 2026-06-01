@@ -45,7 +45,7 @@ export function ClubFormDialog({ open, onOpenChange, club }: Props) {
     }
   }, [open, club]);
 
-  function submit() {
+  async function submit() {
     if (!name.trim() || !city.trim()) {
       toast.error("Preencha nome e cidade.");
       return;
@@ -60,14 +60,24 @@ export function ClubFormDialog({ open, onOpenChange, club }: Props) {
       secondary_color: secondary,
       description: description || undefined,
     };
-    if (club) {
-      update(club.id, payload);
-      toast.success("Clube atualizado.");
-    } else {
-      create(payload);
-      toast.success("Clube criado.");
+    try {
+      if (club) {
+        await updateM.mutateAsync({
+          id: club.id,
+          patch: payload,
+          logoFile,
+          removeLogo,
+          currentLogoUrl: club.logo_url ?? null,
+        });
+        toast.success("Clube atualizado.");
+      } else {
+        await createM.mutateAsync({ ...payload, archived: false, logoFile });
+        toast.success("Clube criado.");
+      }
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao salvar clube.");
     }
-    onOpenChange(false);
   }
 
   return (
