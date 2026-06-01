@@ -91,9 +91,21 @@ export function ClubFormDialog({ open, onOpenChange, club }: Props) {
         <Tabs defaultValue="identity" className="mt-2">
           <TabsList className="bg-surface/40">
             <TabsTrigger value="identity">Identidade</TabsTrigger>
+            <TabsTrigger value="logo">Logo</TabsTrigger>
             <TabsTrigger value="brand">Marca</TabsTrigger>
             <TabsTrigger value="about">Sobre</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="logo" className="pt-4">
+            <LogoUploader
+              currentUrl={club?.logo_url ?? null}
+              primaryColor={primary}
+              shortName={shortName || name.slice(0, 3) || "—"}
+              onFileSelected={(f) => { setLogoFile(f); if (f) setRemoveLogo(false); }}
+              onRemoveExisting={() => setRemoveLogo(true)}
+            />
+          </TabsContent>
+
 
           <TabsContent value="identity" className="space-y-4 pt-4">
             <div className="grid grid-cols-2 gap-3">

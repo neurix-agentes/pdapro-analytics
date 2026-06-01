@@ -25,7 +25,9 @@ import {
 import {
   useAthletes, useClubs, useSessions, useTeams,
 } from "@/hooks/queries";
-import { useAuthStore, useClubStore, useTeamStore } from "@/store";
+import { useClubStore, useTeamStore } from "@/store";
+import { useSession } from "@/hooks/useAuth";
+
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · PDA Sport" }] }),
@@ -33,7 +35,7 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 function DashboardPage() {
-  const user = useAuthStore((s) => s.user);
+  const { user } = useSession();
   const clubs = useClubs();
   const teams = useTeams();
   const athletesQ = useAthletes();

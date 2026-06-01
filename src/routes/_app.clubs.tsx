@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { ClubsTable } from "@/components/clubs/ClubsTable";
 import { ClubFormDialog } from "@/components/clubs/ClubFormDialog";
 import { useClubs, useAllTeams } from "@/hooks/queries";
-import { useClubStore } from "@/store";
+import { useArchiveClub } from "@/hooks/mutations";
 import type { Club } from "@/types";
 import { toast } from "sonner";
 
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_app/clubs")({
 function ClubsPage() {
   const { data: clubs = [] } = useClubs();
   const { data: teams = [] } = useAllTeams();
-  const archive = useClubStore((s) => s.archiveClub);
+  const archiveM = useArchiveClub();
   const [q, setQ] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
@@ -78,9 +78,12 @@ function ClubsPage() {
         teams={teams}
         onEdit={(c) => { setEditing(c); setOpen(true); }}
         onArchive={(c) => {
-          archive(c.id);
-          toast.success(c.archived ? "Clube reativado." : "Clube arquivado.");
+          archiveM.mutate({ id: c.id, current: !!c.archived }, {
+            onSuccess: () => toast.success(c.archived ? "Clube reativado." : "Clube arquivado."),
+            onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
+          });
         }}
+
       />
 
       <ClubFormDialog open={open} onOpenChange={setOpen} club={editing} />
