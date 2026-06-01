@@ -1,117 +1,41 @@
-// PDA Sport — Zustand stores
+// PDA Sport — Zustand stores (apenas UI state; CRUD vai via mutations.ts)
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Role, User, Club, Team, TransferRecord } from "@/types";
-import { mockUser, mockClubs, mockTeams, mockAthletes, mockTransfers } from "@/mocks/data";
+import { mockAthletes, mockTransfers } from "@/mocks/data";
+import type { TransferRecord } from "@/types";
 
-/* ----------------------- AUTH ----------------------- */
-interface AuthState {
-  user: User | null;
-  setUser: (u: User | null) => void;
-  hasRole: (r: Role) => boolean;
-  hasAnyRole: (rs: Role[]) => boolean;
-  logout: () => void;
-}
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: mockUser,
-  setUser: (user) => set({ user }),
-  hasRole: (r) => get().user?.role === r,
-  hasAnyRole: (rs) => !!get().user && rs.includes(get().user!.role),
-  logout: () => set({ user: null }),
-}));
-
-/* ----------------------- CLUB ----------------------- */
-let _clubSeq = mockClubs.length;
+/* ----------------------- CLUB (scope UI) ----------------------- */
 interface ClubState {
   currentClubId: string | null;
-  version: number; // bump to force selector re-renders after mutations
-  setCurrentClub: (id: string) => void;
-  createClub: (data: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">) => Club;
-  updateClub: (id: string, patch: Partial<Club>) => void;
-  archiveClub: (id: string) => void;
-  bump: () => void;
+  setCurrentClub: (id: string | null) => void;
 }
 export const useClubStore = create<ClubState>()(
   persist(
-    (set, get) => ({
-      currentClubId: "c_gremio",
-      version: 0,
+    (set) => ({
+      currentClubId: null,
       setCurrentClub: (id) => set({ currentClubId: id }),
-      createClub: (data) => {
-        _clubSeq += 1;
-        const club: Club = {
-          ...data,
-          id: `c_new_${_clubSeq}`,
-          created_at: new Date().toISOString().slice(0, 10),
-          active_teams: 0,
-          active_athletes: 0,
-        };
-        mockClubs.push(club);
-        get().bump();
-        return club;
-      },
-      updateClub: (id, patch) => {
-        const idx = mockClubs.findIndex((c) => c.id === id);
-        if (idx >= 0) mockClubs[idx] = { ...mockClubs[idx], ...patch };
-        get().bump();
-      },
-      archiveClub: (id) => {
-        const idx = mockClubs.findIndex((c) => c.id === id);
-        if (idx >= 0) mockClubs[idx] = { ...mockClubs[idx], archived: !mockClubs[idx].archived };
-        get().bump();
-      },
-      bump: () => set((s) => ({ version: s.version + 1 })),
     }),
-    { name: "pda.club", partialize: (s) => ({ currentClubId: s.currentClubId }) },
+    { name: "pda.club" },
   ),
 );
 
-/* ----------------------- TEAM ----------------------- */
-let _teamSeq = mockTeams.length;
+/* ----------------------- TEAM (scope UI) ----------------------- */
 interface TeamState {
   currentTeamId: string | null;
-  version: number;
   setCurrentTeam: (id: string | null) => void;
-  createTeam: (data: Omit<Team, "id" | "created_at" | "athletes_count">) => Team;
-  updateTeam: (id: string, patch: Partial<Team>) => void;
-  archiveTeam: (id: string) => void;
   transferAthlete: (athleteId: string, toTeamId: string, reason?: string) => void;
-  bump: () => void;
 }
 export const useTeamStore = create<TeamState>()(
   persist(
-    (set, get) => ({
-      currentTeamId: "t_gac_sub17",
-      version: 0,
+    (set) => ({
+      currentTeamId: null,
       setCurrentTeam: (id) => set({ currentTeamId: id }),
-      createTeam: (data) => {
-        _teamSeq += 1;
-        const team: Team = {
-          ...data,
-          id: `t_new_${_teamSeq}`,
-          athletes_count: 0,
-          created_at: new Date().toISOString().slice(0, 10),
-        };
-        mockTeams.push(team);
-        get().bump();
-        return team;
-      },
-      updateTeam: (id, patch) => {
-        const idx = mockTeams.findIndex((t) => t.id === id);
-        if (idx >= 0) mockTeams[idx] = { ...mockTeams[idx], ...patch };
-        get().bump();
-      },
-      archiveTeam: (id) => {
-        const idx = mockTeams.findIndex((t) => t.id === id);
-        if (idx >= 0) mockTeams[idx] = { ...mockTeams[idx], archived: !mockTeams[idx].archived };
-        get().bump();
-      },
+      // local-only (mocks): athletes ainda não estão no DB
       transferAthlete: (athleteId, toTeamId, reason) => {
         const aIdx = mockAthletes.findIndex((a) => a.id === athleteId);
-        const team = mockTeams.find((t) => t.id === toTeamId);
-        if (aIdx < 0 || !team) return;
+        if (aIdx < 0) return;
         const fromTeamId = mockAthletes[aIdx].team_id;
-        mockAthletes[aIdx] = { ...mockAthletes[aIdx], team_id: toTeamId, club_id: team.club_id };
+        mockAthletes[aIdx] = { ...mockAthletes[aIdx], team_id: toTeamId };
         mockTransfers.unshift({
           id: `tr_${Date.now()}`,
           athlete_id: athleteId,
@@ -120,9 +44,8 @@ export const useTeamStore = create<TeamState>()(
           date: new Date().toISOString(),
           reason,
         } as TransferRecord);
-        get().bump();
+        set({});
       },
-      bump: () => set((s) => ({ version: s.version + 1 })),
     }),
     { name: "pda.team", partialize: (s) => ({ currentTeamId: s.currentTeamId }) },
   ),
