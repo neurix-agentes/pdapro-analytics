@@ -41,16 +41,20 @@ export function ClubSwitcher({ compact = false }: { compact?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="group w-full rounded-xl border border-border bg-surface/40 hover:bg-surface hover:border-primary/30 transition px-3 py-2.5 flex items-center gap-3">
-        <div
-          className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold tracking-wider"
-          style={{
-            background: `color-mix(in oklab, ${current?.primary_color ?? "#00FF88"} 18%, transparent)`,
-            color: current?.primary_color ?? "#00FF88",
-            boxShadow: `0 0 18px -6px ${current?.primary_color ?? "#00FF88"}`,
-          }}
-        >
-          {current?.short_name ?? "—"}
-        </div>
+        {current?.logo_url ? (
+          <img src={current.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover border border-border" />
+        ) : (
+          <div
+            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold tracking-wider"
+            style={{
+              background: `color-mix(in oklab, ${current?.primary_color ?? "#00FF88"} 18%, transparent)`,
+              color: current?.primary_color ?? "#00FF88",
+              boxShadow: `0 0 18px -6px ${current?.primary_color ?? "#00FF88"}`,
+            }}
+          >
+            {current?.short_name ?? "—"}
+          </div>
+        )}
         <div className="flex-1 text-left min-w-0">
           <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Clube</div>
           <div className="text-sm font-semibold truncate">{current?.name ?? "Selecionar"}</div>
