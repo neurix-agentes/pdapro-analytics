@@ -41,16 +41,20 @@ export function ClubSwitcher({ compact = false }: { compact?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="group w-full rounded-xl border border-border bg-surface/40 hover:bg-surface hover:border-primary/30 transition px-3 py-2.5 flex items-center gap-3">
-        <div
-          className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold tracking-wider"
-          style={{
-            background: `color-mix(in oklab, ${current?.primary_color ?? "#00FF88"} 18%, transparent)`,
-            color: current?.primary_color ?? "#00FF88",
-            boxShadow: `0 0 18px -6px ${current?.primary_color ?? "#00FF88"}`,
-          }}
-        >
-          {current?.short_name ?? "—"}
-        </div>
+        {current?.logo_url ? (
+          <img src={current.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover border border-border" />
+        ) : (
+          <div
+            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold tracking-wider"
+            style={{
+              background: `color-mix(in oklab, ${current?.primary_color ?? "#00FF88"} 18%, transparent)`,
+              color: current?.primary_color ?? "#00FF88",
+              boxShadow: `0 0 18px -6px ${current?.primary_color ?? "#00FF88"}`,
+            }}
+          >
+            {current?.short_name ?? "—"}
+          </div>
+        )}
         <div className="flex-1 text-left min-w-0">
           <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Clube</div>
           <div className="text-sm font-semibold truncate">{current?.name ?? "Selecionar"}</div>
@@ -64,7 +68,7 @@ export function ClubSwitcher({ compact = false }: { compact?: boolean }) {
 
 function ClubMenu({
   clubs, currentId, onPick,
-}: { clubs: { id: string; name: string; city: string; short_name: string; primary_color?: string }[]; currentId?: string; onPick: (id: string) => void }) {
+}: { clubs: { id: string; name: string; city: string; short_name: string; primary_color?: string; logo_url?: string }[]; currentId?: string; onPick: (id: string) => void }) {
   return (
     <DropdownMenuContent align="start" className="w-64 bg-popover/95 backdrop-blur-xl border-border">
       <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -77,15 +81,19 @@ function ClubMenu({
           onClick={() => onPick(c.id)}
           className="gap-3 py-2.5 cursor-pointer focus:bg-primary/10"
         >
-          <div
-            className="h-8 w-8 rounded-md flex items-center justify-center text-[10px] font-bold"
-            style={{
-              background: `color-mix(in oklab, ${c.primary_color ?? "#00FF88"} 18%, transparent)`,
-              color: c.primary_color ?? "#00FF88",
-            }}
-          >
-            {c.short_name}
-          </div>
+          {c.logo_url ? (
+            <img src={c.logo_url} alt="" className="h-8 w-8 rounded-md object-cover border border-border" />
+          ) : (
+            <div
+              className="h-8 w-8 rounded-md flex items-center justify-center text-[10px] font-bold"
+              style={{
+                background: `color-mix(in oklab, ${c.primary_color ?? "#00FF88"} 18%, transparent)`,
+                color: c.primary_color ?? "#00FF88",
+              }}
+            >
+              {c.short_name}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{c.name}</div>
             <div className="text-[11px] text-muted-foreground truncate">{c.city}</div>

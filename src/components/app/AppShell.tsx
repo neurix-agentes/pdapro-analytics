@@ -1,8 +1,9 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Users, Activity, Flame, FileBarChart, MapPinned, Settings,
   Search, Upload, PanelLeftClose, PanelLeftOpen, Building2, ShieldCheck, LogOut,
 } from "lucide-react";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { ClubSwitcher } from "@/components/app/ClubSwitcher";
@@ -10,7 +11,9 @@ import { TeamSwitcher } from "@/components/app/TeamSwitcher";
 import { NotificationsPopover } from "@/components/app/NotificationsPopover";
 import { Breadcrumbs } from "@/components/app/Breadcrumbs";
 import { SeasonSwitcher } from "@/components/app/SeasonSwitcher";
-import { useSidebarStore, useAuthStore } from "@/store";
+import { useSidebarStore } from "@/store";
+import { useSession, signOut } from "@/hooks/useAuth";
+import { useMyClubIds } from "@/hooks/queries";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -28,11 +31,46 @@ const NAV = [
   { to: "/settings",  label: "Configurações", icon: Settings },
 ] as const;
 
+function displayName(user: { user_metadata?: Record<string, unknown>; email?: string | null } | null) {
+  if (!user) return "";
+  const meta = user.user_metadata ?? {};
+  return (meta.name as string) || (meta.full_name as string) || (user.email?.split("@")[0] ?? "");
+}
+
 export function AppShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const router = useRouter();
   const collapsed = useSidebarStore((s) => s.collapsed);
   const toggle = useSidebarStore((s) => s.toggle);
-  const user = useAuthStore((s) => s.user);
+  const { user, loading } = useSession();
+  const myClubs = useMyClubIds();
+
+  // Guard: not signed in → /auth
+  useEffect(() => {
+    if (!loading && !user) router.navigate({ to: "/auth" });
+  }, [loading, user, router]);
+
+  // Onboarding: signed in but no clubs → /onboarding
+  useEffect(() => {
+    if (
+      user &&
+      !myClubs.isLoading &&
+      (myClubs.data?.length ?? 0) === 0 &&
+      pathname !== "/onboarding"
+    ) {
+      router.navigate({ to: "/onboarding" });
+    }
+  }, [user, myClubs.isLoading, myClubs.data, pathname, router]);
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background text-muted-foreground text-sm">
+        Carregando…
+      </div>
+    );
+  }
+
+  const name = displayName(user);
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -42,7 +80,6 @@ export function AppShell() {
           collapsed ? "w-[72px]" : "w-72"
         }`}
       >
-        {/* Brand */}
         <div className="px-4 pt-5 pb-3 flex items-center justify-between">
           {!collapsed ? <Logo /> : <div className="mx-auto h-9 w-9 rounded-xl bg-primary/15 grid place-items-center text-primary font-bold">P</div>}
           {!collapsed && (
@@ -56,7 +93,6 @@ export function AppShell() {
           )}
         </div>
 
-        {/* Switchers */}
         <div className="px-3 pb-3 space-y-2">
           {collapsed ? (
             <div className="flex justify-center"><ClubSwitcher compact /></div>
@@ -69,11 +105,8 @@ export function AppShell() {
           )}
         </div>
 
-        <div className="px-3">
-          <div className="h-px bg-border/60" />
-        </div>
+        <div className="px-3"><div className="h-px bg-border/60" /></div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {!collapsed && (
             <div className="px-2 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -106,7 +139,6 @@ export function AppShell() {
           })}
         </nav>
 
-        {/* Footer */}
         <div className="p-3 border-t border-border/60 space-y-2">
           {!collapsed && (
             <Link
@@ -125,14 +157,14 @@ export function AppShell() {
               <PanelLeftOpen className="h-4 w-4" />
             </button>
           )}
-          {!collapsed && user && (
+          {!collapsed && (
             <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 hover:bg-surface/60 transition">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-info text-primary-foreground font-bold text-xs grid place-items-center">
-                {user.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
+                {name.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold truncate">{user.name}</div>
-                <div className="text-[10px] text-muted-foreground capitalize">{user.role}</div>
+                <div className="text-xs font-semibold truncate">{name}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{user.email}</div>
               </div>
             </div>
           )}
@@ -159,7 +191,7 @@ export function AppShell() {
                 <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-glow" /> Operacional
               </span>
               <NotificationsPopover />
-              <UserMenu />
+              <UserMenu name={name} email={user.email ?? ""} />
             </div>
           </div>
         </header>
@@ -172,17 +204,21 @@ export function AppShell() {
   );
 }
 
-function UserMenu() {
-  const user = useAuthStore((s) => s.user);
+function UserMenu({ name, email }: { name: string; email: string }) {
+  const router = useRouter();
+  async function handleSignOut() {
+    await signOut();
+    router.navigate({ to: "/auth" });
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-info text-primary-foreground font-bold text-xs grid place-items-center">
-        {user?.name.split(" ").map((s) => s[0]).slice(0, 2).join("") ?? "?"}
+        {name.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase() || "?"}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 bg-popover/95 backdrop-blur-xl border-border">
         <DropdownMenuLabel>
-          <div className="text-sm font-semibold">{user?.name}</div>
-          <div className="text-[11px] text-muted-foreground">{user?.email}</div>
+          <div className="text-sm font-semibold">{name}</div>
+          <div className="text-[11px] text-muted-foreground">{email}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="cursor-pointer">
@@ -192,8 +228,8 @@ function UserMenu() {
           <Link to="/settings">Configurações</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="cursor-pointer text-destructive focus:text-destructive">
-          <Link to="/auth"><LogOut className="h-4 w-4 mr-2" /> Sair</Link>
+        <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
+          <LogOut className="h-4 w-4 mr-2" /> Sair
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

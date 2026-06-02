@@ -53,15 +53,23 @@ export function ClubsTable({ clubs, teams, onEdit, onArchive }: Props) {
                     params={{ clubId: c.id }}
                     className="flex items-center gap-3"
                   >
-                    <div
-                      className="h-10 w-10 rounded-lg grid place-items-center text-[10px] font-bold tracking-wider shrink-0"
-                      style={{
-                        background: `color-mix(in oklab, ${c.primary_color ?? "#00FF88"} 20%, transparent)`,
-                        color: c.primary_color ?? "#00FF88",
-                      }}
-                    >
-                      {c.short_name}
-                    </div>
+                    {c.logo_url ? (
+                      <img
+                        src={c.logo_url}
+                        alt={c.name}
+                        className="h-10 w-10 rounded-lg object-cover shrink-0 border border-border"
+                      />
+                    ) : (
+                      <div
+                        className="h-10 w-10 rounded-lg grid place-items-center text-[10px] font-bold tracking-wider shrink-0"
+                        style={{
+                          background: `color-mix(in oklab, ${c.primary_color ?? "#00FF88"} 20%, transparent)`,
+                          color: c.primary_color ?? "#00FF88",
+                        }}
+                      >
+                        {c.short_name}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <div className="font-medium truncate inline-flex items-center gap-1.5">
                         {c.name}
