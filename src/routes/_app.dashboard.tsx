@@ -136,7 +136,7 @@ function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow={`${club?.short_name ?? "TODOS"}${team ? ` · ${team.name}` : ""}`}
-        title={`Bom treino, ${user?.name.split(" ")[0] ?? "treinador"}.`}
+        title={`Bom treino, ${(((user?.user_metadata as Record<string, unknown> | undefined)?.name as string) || user?.email?.split("@")[0] || "treinador").split(" ")[0]}.`}
         description="Analytics em tempo (quase) real do escopo selecionado."
         actions={
           <Link
