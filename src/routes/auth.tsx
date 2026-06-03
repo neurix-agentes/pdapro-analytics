@@ -15,6 +15,9 @@ export const Route = createFileRoute("/auth")({
       { name: "description", content: "Acesse sua conta PDA Sport." },
     ],
   }),
+  validateSearch: (s: Record<string, unknown>) => ({
+    invite: typeof s.invite === "string" ? s.invite : undefined,
+  }),
   component: AuthPage,
 });
 
