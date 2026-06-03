@@ -1,147 +1,83 @@
-## Plano — Logo do Clube + Backend Foundation
+## Correção — RLS de `clubs` no onboarding
 
-Migrar a PDA Sport de mocks para Supabase real: autenticação, banco completo, storage e API layer com upload de logo.
+### Causa raiz
 
----
-
-### 1. Storage — bucket de logos
-
-Criar bucket público `club-logos` (junto aos existentes `gps-files`, `heatmaps`, `reports`), com policies:
-- SELECT público (qualquer um vê)
-- INSERT/UPDATE/DELETE: apenas membros do clube (path = `{club_id}/logo.{ext}`)
-
-Limite 2MB, MIME `image/png` e `image/jpeg`.
-
----
-
-### 2. Banco — schema completo
-
-Tipos enum: `app_role` (`admin`, `club_owner`, `coach`, `athlete`), `session_type`, `session_status`, `position`.
-
-Tabelas (todas em `public`, com RLS, GRANTs, triggers `updated_at`):
+A política de INSERT da tabela `clubs` é:
 
 ```
-profiles          (user_id, name, email, avatar_url)
-user_roles        (user_id, role)                              -- roles globais
-clubs             (id, name, short_name, city, state, country,
-                   primary_color, secondary_color, description,
-                   logo_url, archived, created_by)
-club_members      (club_id, user_id, role)                     -- multi-tenant
-teams             (id, club_id, name, category, coach_id,
-                   season, archived)
-coaches           (id, club_id, name, email, avatar_url)
-athletes          (id, club_id, team_id, name, age, position,
-                   jersey_number, photo_url, height_cm,
-                   weight_kg, active)
-fields            (id, club_id, name, width_m, length_m,
-                   surface, gps_lat, gps_lng)
-sessions          (id, club_id, team_id, athlete_id, field_id,
-                   session_type, status, date, duration_min,
-                   gps_file_url, metrics jsonb)
-heatmaps          (id, club_id, session_id, athlete_id,
-                   heatmap_png_url, thumbnail_url, metrics jsonb)
-reports           (id, club_id, team_id, athlete_id,
-                   title, period, report_pdf_url)
-transfers         (id, athlete_id, from_team_id, to_team_id,
-                   date, reason)
+WITH CHECK (auth.uid() = created_by)
 ```
 
-**RLS (security definer `is_club_member(uid, club_id)` para evitar recursão):**
-- `profiles`: leitura/atualização do próprio usuário.
-- `clubs`: SELECT/UPDATE se `is_club_member`; INSERT por usuário autenticado (vira owner).
-- `club_members`: SELECT pelos próprios membros; INSERT pelo owner do clube.
-- Demais tabelas: CRUD escopado por `is_club_member(auth.uid(), club_id)`.
+Ela só passa se o cliente enviar `created_by` exatamente igual ao `auth.uid()` do JWT. Hoje o `clubsService.create` faz isso, **mas**:
 
-**Triggers:**
-- `on_auth_user_created` → cria `profiles` automaticamente.
-- `on_club_created` → insere criador em `club_members` como `owner`.
-- `updated_at` em todas.
+1. Se a sessão estiver levemente fora de sincronia (signup → onboarding antes do listener atualizar), `getUser()` pode retornar um id, mas o JWT enviado no header ainda ser de outro estado → `auth.uid()` no banco ≠ `created_by` enviado → RLS violada.
+2. Nenhuma tabela em `public` tem `GRANT` explícito para `authenticated`/`service_role` (verificado em `information_schema.role_table_grants` → 0 linhas). Hoje o acesso ocorre só via privilégios herdados do schema — frágil e fora do padrão Lovable Cloud.
+3. A política depende 100% do cliente lembrar de mandar `created_by`. Qualquer caminho futuro que esqueça quebra com o mesmo erro.
 
----
+### Plano
 
-### 3. Auth
+**1. Migration de correção** (`fix_clubs_rls_onboarding`):
 
-- Habilitar email/senha + Google (via `configure_social_auth` com `providers: ["google"]`).
-- Sem auto-confirm (verificação de e-mail obrigatória).
-- HIBP password check ligado.
+- `ALTER TABLE public.clubs ALTER COLUMN created_by SET DEFAULT auth.uid();`
+  Garante que mesmo se o cliente não enviar `created_by`, o Postgres preenche com o usuário autenticado.
 
-Páginas:
-- `/auth` → reescrever com `supabase.auth.signInWithPassword`, `signUp` e botão Google via `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`.
-- `/onboarding` → nova rota guiada (3 passos): **criar 1º clube** (com logo) → **criar 1º time** → concluído. Acionada quando usuário autenticado não possui `club_members`.
-- Layout `_authenticated` com `beforeLoad` redirecionando para `/auth`.
-- `__root.tsx`: `onAuthStateChange` invalidando React Query.
+- Recriar a INSERT policy de `clubs` para ser tolerante e correta:
+  ```sql
+  DROP POLICY "clubs auth insert" ON public.clubs;
+  CREATE POLICY "clubs auth insert" ON public.clubs
+    FOR INSERT TO authenticated
+    WITH CHECK (auth.uid() IS NOT NULL AND created_by = auth.uid());
+  ```
+  Combinado com o DEFAULT acima, isso é à prova de cliente: se omitir `created_by`, o default vira `auth.uid()` e a check passa; se enviar errado, falha como deve.
 
----
+- Adicionar `GRANT`s explícitos em todas as tabelas `public` (corrige fragilidade arquitetural):
+  ```sql
+  GRANT SELECT, INSERT, UPDATE, DELETE ON
+    public.clubs, public.club_members, public.teams, public.coaches,
+    public.athletes, public.fields, public.sessions, public.heatmaps,
+    public.reports, public.transfers, public.profiles
+    TO authenticated;
+  GRANT SELECT ON public.user_roles TO authenticated;
+  GRANT ALL ON
+    public.clubs, public.club_members, public.teams, public.coaches,
+    public.athletes, public.fields, public.sessions, public.heatmaps,
+    public.reports, public.transfers, public.profiles, public.user_roles
+    TO service_role;
+  ```
 
-### 4. API Layer — substituir mocks por Supabase
+- Reforçar a INSERT policy de `club_members` para cobrir o caso do trigger SECURITY DEFINER (já cobre, mas explicitar):
+  *(sem mudanças — política atual `is_club_owner OR user_id = auth.uid()` já contempla o trigger e o owner.)*
 
-Reescrever `src/services/index.ts`: cada `*Service.list/get/create/update/archive` passa a chamar `supabase.from(...).select/insert/update`.
+**2. Ajuste no `clubsService.create`** (`src/services/index.ts`):
 
-Stores (`src/store/index.ts`):
-- `useAuthStore`: derivado de `supabase.auth.getSession()` + listener (não mais `mockUser`).
-- `useClubStore.createClub/updateClub/archiveClub`: viram **mutations assíncronas** que chamam `clubsService` + `queryClient.invalidateQueries(["clubs"])`.
-- `useTeamStore.*` idem.
-- Manter `currentClubId`, `currentTeamId`, `currentSeason` apenas como UI state persistido.
+- Manter `created_by: u.user.id` (cinto + suspensório com o DEFAULT).
+- Adicionar fallback: se `supabase.auth.getUser()` falhar ou retornar `null`, lançar erro claro **antes** do insert, em vez de deixar o RLS falhar opaco.
+- Após criar o clube, fazer um `await` curto e em seguida invalidar `myClubIds` (já feito no hook) — mantém comportamento.
 
-Hooks (`src/hooks/queries.ts`): manter assinaturas (`useClubs`, `useTeams`, etc.) — só a fonte muda. Adicionar `useCurrentUserClubs()` filtrando por membership.
+**3. Garantir owner em `club_members` mesmo se o trigger falhar** (defesa em profundidade):
 
-Remover `src/mocks/data.ts` da árvore de runtime (manter como referência opcional ou deletar).
+- No `useCreateClub` (`src/hooks/mutations.ts`), após `clubsService.create`, fazer um `upsert` idempotente em `club_members` com `{ club_id, user_id, role: 'owner' }` (`onConflict: 'club_id,user_id'`). O trigger já faz isso, mas o upsert garante que o usuário **sempre** vire membro do clube que acabou de criar, mesmo em cenários de erro do trigger.
 
----
+**4. Isolamento e segurança (sem mudanças, apenas confirmar)**:
 
-### 5. Upload de logo no cadastro do Clube
+- SELECT/UPDATE/DELETE de `clubs` continuam restritos a membros via `is_club_member` / `is_club_owner`.
+- Demais tabelas (`teams`, `athletes`, etc.) continuam escopadas por `is_club_member(auth.uid(), club_id)`.
+- Nenhum acesso a clubes de terceiros é aberto.
 
-`ClubFormDialog.tsx`: nova aba **"Logo"** (entre Marca e Sobre) com:
-- Dropzone + `<input type="file" accept="image/png,image/jpeg">`.
-- Preview circular 96px.
-- Validação: ≤ 2MB, PNG/JPEG.
-- Ao salvar: upload para `club-logos/{clubId}/logo.{ext}` → `getPublicUrl` → grava em `clubs.logo_url`.
-- Botão "Remover logo".
+### Validação (após aplicar)
 
-Renderizar `logo_url` em:
-- `ClubsTable` (avatar)
-- `ClubSwitcher`
-- `PageHeader` do detalhe do clube
-- Fallback: iniciais coloridas atuais.
+1. Logout → signup novo usuário → onboarding cria clube → cria time → `/dashboard` sem erro.
+2. `select * from clubs` no SQL editor com outro usuário não deve listar o clube alheio (RLS SELECT ok).
+3. `select * from club_members where user_id = auth.uid()` deve conter o registro `owner` do clube recém-criado.
 
----
+### Arquivos tocados
 
-### 6. Detalhes técnicos
+- `supabase/migrations/<timestamp>_fix_clubs_rls_onboarding.sql` (nova)
+- `src/services/index.ts` (ajuste pequeno no `create`)
+- `src/hooks/mutations.ts` (upsert defensivo em `club_members`)
 
-- **Migração única** via `supabase--migration` (enums + tabelas + GRANTs + RLS + triggers + storage policies + bucket).
-- **Vinculação de identificadores**: trocar IDs string atuais (`c_gremio`) por `uuid` gerado pelo Postgres. Tipos em `src/types/index.ts` continuam `string` (compatível com uuid).
-- **TanStack Query**: stale 30s para listas, `invalidate` em mutations.
-- **Loading states**: skeletons já existentes nas páginas continuam funcionando.
-- **Toast** em todas as mutations (sucesso/erro com `error.message`).
-- **Onboarding empty-state**: se `useCurrentUserClubs()` retorna `[]`, redireciona para `/onboarding`.
+### Fora de escopo
 
----
-
-### Fora de escopo (continua mock/placeholder até próximas fases)
-
-- Upload real de GPX (apenas estrutura da tabela `sessions`).
-- Geração real de heatmap PNG (apenas estrutura).
-- Geração real de PDF de relatório.
-- Billing, RBAC fino, audit log.
-- Realtime websockets.
-
----
-
-### Arquivos a criar
-- `supabase/migrations/<timestamp>_backend_foundation.sql`
-- `src/routes/onboarding.tsx`
-- `src/components/onboarding/Step1Club.tsx`, `Step2Team.tsx`
-- `src/components/clubs/LogoUploader.tsx`
-- `src/lib/storage.ts` (helpers de upload)
-
-### Arquivos a editar
-- `src/services/index.ts` (Supabase real)
-- `src/store/index.ts` (auth via Supabase, mutations async)
-- `src/hooks/queries.ts` (+ `useCurrentUserClubs`)
-- `src/routes/auth.tsx` (Supabase auth + Google)
-- `src/routes/_app.tsx` (guard auth)
-- `src/routes/__root.tsx` (onAuthStateChange)
-- `src/components/clubs/ClubFormDialog.tsx` (aba Logo + upload)
-- `src/components/clubs/ClubsTable.tsx`, `src/components/app/ClubSwitcher.tsx` (render logo_url)
-- `src/types/index.ts` (campo `logo_url` em Club já existe; revisar)
-- `src/mocks/data.ts` → remover do runtime
+- Refator de policies das demais tabelas.
+- Mudanças no fluxo visual do onboarding.
+- Convite de outros membros (próxima fase).
