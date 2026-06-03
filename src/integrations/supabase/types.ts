@@ -77,6 +77,51 @@ export type Database = {
           },
         ]
       }
+      club_invites: {
+        Row: {
+          club_id: string
+          code: string
+          created_at: string
+          created_by: string | null
+          email: string | null
+          expires_at: string
+          id: string
+          max_uses: number
+          revoked_at: string | null
+          role: Database["public"]["Enums"]["club_role"]
+          updated_at: string
+          uses: number
+        }
+        Insert: {
+          club_id: string
+          code: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string
+          id?: string
+          max_uses?: number
+          revoked_at?: string | null
+          role?: Database["public"]["Enums"]["club_role"]
+          updated_at?: string
+          uses?: number
+        }
+        Update: {
+          club_id?: string
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string
+          id?: string
+          max_uses?: number
+          revoked_at?: string | null
+          role?: Database["public"]["Enums"]["club_role"]
+          updated_at?: string
+          uses?: number
+        }
+        Relationships: []
+      }
       club_members: {
         Row: {
           club_id: string
@@ -594,6 +639,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      has_club_role: {
+        Args: {
+          _club_id: string
+          _roles: Database["public"]["Enums"]["club_role"][]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -609,10 +662,18 @@ export type Database = {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
+      redeem_club_invite: { Args: { _code: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "club_owner" | "coach" | "athlete"
-      club_role: "owner" | "admin" | "coach" | "member"
+      club_role:
+        | "owner"
+        | "admin"
+        | "coach"
+        | "member"
+        | "assistant_coach"
+        | "analyst"
+        | "athlete"
       field_surface: "natural" | "sintetico" | "society"
       position_enum:
         | "GK"
@@ -757,7 +818,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "club_owner", "coach", "athlete"],
-      club_role: ["owner", "admin", "coach", "member"],
+      club_role: [
+        "owner",
+        "admin",
+        "coach",
+        "member",
+        "assistant_coach",
+        "analyst",
+        "athlete",
+      ],
       field_surface: ["natural", "sintetico", "society"],
       position_enum: [
         "GK",
