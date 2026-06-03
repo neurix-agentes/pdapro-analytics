@@ -1,28 +1,35 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Building2, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, ShieldCheck, Sparkles, Mail, ArrowRight, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 import { useSession } from "@/hooks/useAuth";
 import { useMyClubIds } from "@/hooks/queries";
-import { useCreateClub, useCreateTeam } from "@/hooks/mutations";
+import { useCreateClub, useCreateTeam, useRedeemInvite } from "@/hooks/mutations";
 import { useClubStore } from "@/store";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Boas-vindas · PDA Sport" }] }),
+  validateSearch: (s: Record<string, unknown>) => ({
+    invite: typeof s.invite === "string" ? s.invite : undefined,
+  }),
   component: OnboardingPage,
 });
 
+type Step = "choose" | "club" | "team" | "invite";
+
 function OnboardingPage() {
   const navigate = useNavigate();
+  const { invite } = Route.useSearch();
   const { user, loading } = useSession();
   const setCurrentClub = useClubStore((s) => s.setCurrentClub);
   const createClub = useCreateClub();
   const createTeam = useCreateTeam();
+  const redeem = useRedeemInvite();
   const myClubs = useMyClubIds();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<Step>(invite ? "invite" : "choose");
   const [clubId, setClubId] = useState<string | null>(null);
 
   // Club fields
@@ -32,10 +39,12 @@ function OnboardingPage() {
   // Team fields
   const [teamName, setTeamName] = useState("");
   const [category, setCategory] = useState("Profissional");
+  // Invite
+  const [code, setCode] = useState(invite ?? "");
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth", replace: true });
-  }, [loading, user, navigate]);
+    if (!loading && !user) navigate({ to: "/auth", search: invite ? { invite } : undefined, replace: true });
+  }, [loading, user, navigate, invite]);
 
   async function submitClub(e: FormEvent) {
     e.preventDefault();
@@ -52,8 +61,8 @@ function OnboardingPage() {
       setClubId(club.id);
       setCurrentClub(club.id);
       await myClubs.refetch();
-      toast.success("Clube criado!");
-      setStep(2);
+      toast.success("Clube criado! Você é o OWNER.");
+      setStep("team");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao criar clube.");
     }
@@ -70,15 +79,27 @@ function OnboardingPage() {
         season: "2025/26",
         archived: false,
       });
-      toast.success("Time criado! Bem-vindo à PDA Sport.");
+      toast.success("Tudo pronto! Bem-vindo à PDA Sport.");
       navigate({ to: "/dashboard", replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao criar time.");
     }
   }
 
+  async function submitInvite(e: FormEvent) {
+    e.preventDefault();
+    try {
+      const joinedClubId = await redeem.mutateAsync(code);
+      setCurrentClub(joinedClubId);
+      toast.success("Você entrou no clube!");
+      navigate({ to: "/dashboard", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Convite inválido.");
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-10 relative overflow-hidden">
       <div className="absolute inset-0 grid-bg opacity-30 [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] bg-primary/10 blur-3xl rounded-full -z-10" />
 
@@ -86,42 +107,66 @@ function OnboardingPage() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-lg"
+        className="relative w-full max-w-2xl"
       >
         <div className="glass rounded-3xl p-8 md:p-10 glow-primary">
           <div className="flex justify-center"><Logo size="lg" /></div>
 
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <StepDot active={step >= 1} done={step > 1} icon={<Building2 className="h-3.5 w-3.5" />} label="Clube" />
-            <div className="h-px w-10 bg-border" />
-            <StepDot active={step >= 2} icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Time" />
-          </div>
+          {step === "choose" && (
+            <>
+              <div className="mt-8 text-center">
+                <h1 className="text-2xl font-semibold">Como deseja começar?</h1>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Escolha a opção que melhor descreve sua situação.
+                </p>
+              </div>
 
-          {step === 1 ? (
+              <div className="mt-8 grid md:grid-cols-2 gap-4">
+                <ChoiceCard
+                  icon={<Building2 className="h-6 w-6" />}
+                  title="Criar um novo clube"
+                  description="Sou responsável pela equipe e desejo configurar um clube do zero. Você será o OWNER."
+                  cta="Criar clube"
+                  onClick={() => setStep("club")}
+                  highlight
+                />
+                <ChoiceCard
+                  icon={<Mail className="h-6 w-6" />}
+                  title="Entrar em um clube existente"
+                  description="Recebi um convite da minha equipe. Tenho um código ou link de convite."
+                  cta="Usar convite"
+                  onClick={() => setStep("invite")}
+                />
+              </div>
+            </>
+          )}
+
+          {step === "club" && (
             <form onSubmit={submitClub} className="mt-8 space-y-4">
-              <Header
-                title="Crie seu primeiro clube"
-                subtitle="Você é o owner — convide outros membros depois."
-              />
+              <Stepper current={1} of={2} />
+              <Header title="Crie seu primeiro clube" subtitle="Você poderá convidar membros depois." />
               <Field label="Nome do clube" value={clubName} onChange={(e) => setClubName(e.target.value)} placeholder="Ex.: Grêmio FC" required />
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Sigla" value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="GRE" maxLength={4} required />
                 <Field label="Cidade" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Porto Alegre" required />
               </div>
-              <button
-                type="submit"
-                disabled={createClub.isPending}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:opacity-90 transition glow-primary disabled:opacity-60"
-              >
-                {createClub.isPending ? "Criando…" : "Avançar"}
-              </button>
+              <div className="flex items-center gap-3 pt-2">
+                <BackButton onClick={() => setStep("choose")} />
+                <button
+                  type="submit"
+                  disabled={createClub.isPending}
+                  className="flex-1 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:opacity-90 transition glow-primary disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                >
+                  {createClub.isPending ? "Criando…" : (<>Avançar <ArrowRight className="h-4 w-4" /></>)}
+                </button>
+              </div>
             </form>
-          ) : (
+          )}
+
+          {step === "team" && (
             <form onSubmit={submitTeam} className="mt-8 space-y-4">
-              <Header
-                title="Crie o primeiro time"
-                subtitle="Você poderá criar mais times e categorias depois."
-              />
+              <Stepper current={2} of={2} />
+              <Header title="Crie o primeiro time" subtitle="Você poderá criar mais times e categorias depois." />
               <Field label="Nome do time" value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Ex.: Profissional" required />
               <Field label="Categoria" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Profissional, Sub-20…" required />
               <button
@@ -134,9 +179,65 @@ function OnboardingPage() {
               </button>
             </form>
           )}
+
+          {step === "invite" && (
+            <form onSubmit={submitInvite} className="mt-8 space-y-4">
+              <Header title="Use seu convite" subtitle="Cole o código que você recebeu da equipe." />
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Código do convite</span>
+                <div className="mt-1.5 relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="ABCD1234"
+                    required
+                    className="w-full rounded-xl bg-surface/60 border border-border pl-10 pr-3.5 py-3 text-sm tracking-[0.3em] uppercase placeholder:tracking-normal placeholder:text-muted-foreground/50 outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition"
+                  />
+                </div>
+              </label>
+              <div className="flex items-center gap-3 pt-2">
+                <BackButton onClick={() => setStep("choose")} />
+                <button
+                  type="submit"
+                  disabled={redeem.isPending || !code.trim()}
+                  className="flex-1 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:opacity-90 transition glow-primary disabled:opacity-60"
+                >
+                  {redeem.isPending ? "Validando…" : "Entrar no clube"}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </motion.div>
     </div>
+  );
+}
+
+function ChoiceCard({
+  icon, title, description, cta, onClick, highlight,
+}: { icon: React.ReactNode; title: string; description: string; cta: string; onClick: () => void; highlight?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group text-left rounded-2xl p-5 border transition flex flex-col gap-3 ${
+        highlight
+          ? "border-primary/40 bg-primary/5 hover:bg-primary/10"
+          : "border-border bg-surface/60 hover:bg-surface"
+      }`}
+    >
+      <div className={`h-11 w-11 rounded-xl grid place-items-center ${highlight ? "bg-primary/15 text-primary" : "bg-surface text-foreground"}`}>
+        {icon}
+      </div>
+      <div>
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="text-xs text-muted-foreground mt-1">{description}</div>
+      </div>
+      <div className={`mt-auto inline-flex items-center gap-1.5 text-xs font-semibold ${highlight ? "text-primary" : "text-foreground"} group-hover:gap-2.5 transition-all`}>
+        {cta} <ArrowRight className="h-3.5 w-3.5" />
+      </div>
+    </button>
   );
 }
 
@@ -149,18 +250,28 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-function StepDot({ active, done, icon, label }: { active: boolean; done?: boolean; icon: React.ReactNode; label: string }) {
+function Stepper({ current, of }: { current: number; of: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div
-        className={`h-7 w-7 rounded-full grid place-items-center text-[10px] font-bold transition ${
-          done ? "bg-primary text-primary-foreground" : active ? "bg-primary/15 text-primary border border-primary/30" : "bg-surface text-muted-foreground border border-border"
-        }`}
-      >
-        {icon}
-      </div>
-      <span className={`text-[11px] uppercase tracking-wider ${active ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+    <div className="flex items-center justify-center gap-1.5">
+      {Array.from({ length: of }).map((_, i) => (
+        <span
+          key={i}
+          className={`h-1 rounded-full transition-all ${i < current ? "w-6 bg-primary" : "w-3 bg-border"}`}
+        />
+      ))}
     </div>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border border-border bg-surface/60 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition"
+    >
+      Voltar
+    </button>
   );
 }
 

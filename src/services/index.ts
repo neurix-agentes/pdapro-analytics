@@ -190,13 +190,114 @@ export const coachesService = {
 };
 
 /* ===================== AUTH (membership) ===================== */
+export type ClubRole =
+  | "owner" | "admin" | "coach" | "assistant_coach" | "analyst" | "athlete" | "member";
+
 export const membershipService = {
   async myClubIds(): Promise<string[]> {
     const { data, error } = await supabase.from("club_members").select("club_id");
     if (error) throw new Error(error.message);
     return (data ?? []).map((r) => r.club_id);
   },
+  async myMemberships(): Promise<{ club_id: string; role: ClubRole }[]> {
+    const { data, error } = await supabase.from("club_members").select("club_id, role");
+    if (error) throw new Error(error.message);
+    return (data ?? []) as { club_id: string; role: ClubRole }[];
+  },
+  async listClubMembers(clubId: string) {
+    const { data, error } = await supabase
+      .from("club_members")
+      .select("id, user_id, role, created_at")
+      .eq("club_id", clubId);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
 };
+
+/* ===================== INVITES ===================== */
+export interface ClubInvite {
+  id: string;
+  club_id: string;
+  code: string;
+  role: ClubRole;
+  email: string | null;
+  expires_at: string;
+  max_uses: number;
+  uses: number;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+function randomCode(len = 8) {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
+  return out;
+}
+
+export const invitesService = {
+  async listByClub(clubId: string): Promise<ClubInvite[]> {
+    const { data, error } = await supabase
+      .from("club_invites")
+      .select("*")
+      .eq("club_id", clubId)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ClubInvite[];
+  },
+  async create(payload: {
+    club_id: string;
+    role: ClubRole;
+    email?: string | null;
+    max_uses?: number;
+    expires_in_days?: number;
+  }): Promise<ClubInvite> {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) throw new Error("Sessão expirada.");
+    const expires_at = new Date(
+      Date.now() + (payload.expires_in_days ?? 30) * 86400000,
+    ).toISOString();
+    const { data, error } = await supabase
+      .from("club_invites")
+      .insert({
+        club_id: payload.club_id,
+        code: randomCode(),
+        role: payload.role,
+        email: payload.email ?? null,
+        max_uses: payload.max_uses ?? 1,
+        expires_at,
+        created_by: u.user.id,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data as ClubInvite;
+  },
+  async revoke(id: string): Promise<void> {
+    const { error } = await supabase
+      .from("club_invites")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+  async redeem(code: string): Promise<string> {
+    const { data, error } = await supabase.rpc("redeem_club_invite", { _code: code.trim() });
+    if (error) throw new Error(translateInviteError(error.message));
+    return data as string;
+  },
+};
+
+function translateInviteError(msg: string) {
+  if (msg.includes("invite_not_found")) return "Convite não encontrado.";
+  if (msg.includes("invite_revoked")) return "Este convite foi revogado.";
+  if (msg.includes("invite_expired")) return "Este convite expirou.";
+  if (msg.includes("invite_exhausted")) return "Este convite já atingiu o limite de usos.";
+  if (msg.includes("invite_email_mismatch")) return "Este convite é para outro e-mail.";
+  if (msg.includes("not_authenticated")) return "Faça login para resgatar o convite.";
+  return msg;
+}
 
 /* =====================================================
    MOCKED (próximas fases) — athletes/sessions/heatmaps/reports/fields

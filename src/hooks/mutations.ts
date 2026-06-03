@@ -1,6 +1,6 @@
 // PDA Sport — Mutations (Supabase)
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clubsService, teamsService, coachesService } from "@/services";
+import { clubsService, teamsService, coachesService, invitesService, type ClubRole } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import { supabase } from "@/integrations/supabase/client";
 import type { Club, Team, Coach } from "@/types";
@@ -95,5 +95,36 @@ export function useCreateCoach() {
   return useMutation({
     mutationFn: (payload: Omit<Coach, "id">) => coachesService.create(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["coaches"] }),
+  });
+}
+
+/* ============ INVITES ============ */
+
+export function useCreateInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { club_id: string; role: ClubRole; email?: string | null; max_uses?: number; expires_in_days?: number }) =>
+      invitesService.create(payload),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["clubInvites", v.club_id] }),
+  });
+}
+
+export function useRevokeInvite(clubId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => invitesService.revoke(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clubInvites", clubId] }),
+  });
+}
+
+export function useRedeemInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => invitesService.redeem(code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["myClubIds"] });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
+      qc.invalidateQueries({ queryKey: ["clubs"] });
+    },
   });
 }

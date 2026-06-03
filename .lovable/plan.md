@@ -1,83 +1,125 @@
-## Correção — RLS de `clubs` no onboarding
+# Plano — Onboarding com Convites e Roles Expandidas
 
-### Causa raiz
+## Objetivo
 
-A política de INSERT da tabela `clubs` é:
+Substituir o onboarding forçado ("crie um clube") por uma escolha clara:
+1. **Criar um novo clube** (vira OWNER)
+2. **Entrar em um clube existente** (via código de convite, recebe role definida pelo convite)
 
+Expandir as roles de `club_members` para suportar o ciclo completo do time esportivo, e usar exclusivamente `club_members.role` para controle de permissões (não usar `clubs.created_by` para autorização — apenas auditoria).
+
+## 1. Banco de dados (migração)
+
+### Expandir enum `club_role`
+Atualmente: `owner, admin, coach, member`.
+Adicionar: `assistant_coach, analyst, athlete`.
+Manter `member` por compatibilidade (migrado depois) ou mapear para `analyst`.
+
+Final: `owner, admin, coach, assistant_coach, analyst, athlete` (drop `member` após migração de dados).
+
+### Nova tabela `club_invites`
+Campos de domínio:
+- `club_id` (FK lógica para clubs)
+- `code` (text único, ex.: 8 chars base32) — usado como link/código
+- `role` (club_role) — role que o convidado receberá
+- `email` (text, opcional — restringe a um e-mail específico)
+- `expires_at` (timestamptz, default now() + 30d)
+- `max_uses` (int, default 1), `uses` (int, default 0)
+- `created_by` (uuid, default auth.uid())
+- `revoked_at` (timestamptz, nullable)
+
+Helper SQL: função `redeem_club_invite(_code text)` SECURITY DEFINER:
+- Valida código ativo (não expirado, não revogado, `uses < max_uses`, email match se setado)
+- Insere `club_members(club_id, user_id=auth.uid(), role)` com `ON CONFLICT DO NOTHING`
+- Incrementa `uses`
+- Retorna `club_id`
+
+### RLS de `club_invites`
+- SELECT: owner/admin do clube OU dono do código pelo `code` exato (lookup público restrito a 1 row via função, não policy)
+- INSERT/UPDATE/DELETE: apenas owner/admin do clube (`is_club_owner`)
+- O resgate **NÃO** depende de SELECT direto — usa `redeem_club_invite()` (SECURITY DEFINER) que faz lookup pelo `code`.
+
+### GRANTs
+Conceder `SELECT, INSERT, UPDATE, DELETE` em `club_invites` para `authenticated`; `EXECUTE` em `redeem_club_invite` para `authenticated`.
+
+### RLS de `clubs` (já corrigida na última migração — manter)
+Confirmar:
+- INSERT com `WITH CHECK (auth.uid() IS NOT NULL AND created_by = auth.uid())`
+- `created_by DEFAULT auth.uid()`
+- Trigger `tg_club_add_owner` insere owner em `club_members` automaticamente
+
+Permissões em todo o app passam a usar `is_club_member` / `is_club_owner` + checagem fina de role via novo helper `has_club_role(_user, _club, _roles[])` quando necessário (ex.: só COACH/ASSISTANT_COACH editam sessões).
+
+## 2. Frontend
+
+### `src/routes/onboarding.tsx` — refazer com 3 telas
+```text
+Step 0: Escolha
+  ┌─ Criar novo clube  → Step 1A (form clube) → Step 2A (form time) → /dashboard
+  └─ Entrar em clube   → Step 1B (código convite) → /dashboard
 ```
-WITH CHECK (auth.uid() = created_by)
-```
+- Cards grandes com ícones (`Building2` / `Mail`), descrições conforme briefing.
+- Step 1B: input do código + botão "Entrar". Chama `supabase.rpc('redeem_club_invite', { _code })`.
+- Em sucesso: `setCurrentClub(clubId)`, `qc.invalidateQueries(['myClubIds'])`, navega `/dashboard`.
+- Em erro: toast com mensagem da função (código inválido, expirado, e-mail divergente).
 
-Ela só passa se o cliente enviar `created_by` exatamente igual ao `auth.uid()` do JWT. Hoje o `clubsService.create` faz isso, **mas**:
+### Settings → nova aba "Membros & Convites" (`/settings`)
+- Lista de membros do clube atual com sua role (somente owner/admin vê)
+- Botão "Gerar convite": modal escolhe role e (opcional) e-mail/expiração → gera código
+- Lista de convites ativos com botão "Copiar link" (`/onboarding?invite=CODE`) e "Revogar"
+- Owner/admin pode alterar role de outros membros (exceto owner único)
 
-1. Se a sessão estiver levemente fora de sincronia (signup → onboarding antes do listener atualizar), `getUser()` pode retornar um id, mas o JWT enviado no header ainda ser de outro estado → `auth.uid()` no banco ≠ `created_by` enviado → RLS violada.
-2. Nenhuma tabela em `public` tem `GRANT` explícito para `authenticated`/`service_role` (verificado em `information_schema.role_table_grants` → 0 linhas). Hoje o acesso ocorre só via privilégios herdados do schema — frágil e fora do padrão Lovable Cloud.
-3. A política depende 100% do cliente lembrar de mandar `created_by`. Qualquer caminho futuro que esqueça quebra com o mesmo erro.
+### Aceite via link `/onboarding?invite=CODE`
+- Se logado e código presente: pula direto para Step 1B preenchido e aciona resgate.
+- Se deslogado: redireciona `/auth` preservando `?invite=` e retorna ao onboarding após login.
 
-### Plano
+### `src/hooks/useAuth.ts` / hooks de role
+- Novo `useMyMemberships()` retornando `[{ club_id, role }]`.
+- Novo `useMyRole(clubId)` para gates de UI.
 
-**1. Migration de correção** (`fix_clubs_rls_onboarding`):
+## 3. Mutations / serviços
 
-- `ALTER TABLE public.clubs ALTER COLUMN created_by SET DEFAULT auth.uid();`
-  Garante que mesmo se o cliente não enviar `created_by`, o Postgres preenche com o usuário autenticado.
+- `useRedeemInvite(code)` → `supabase.rpc('redeem_club_invite', { _code: code })`.
+- `useCreateInvite({ clubId, role, email?, expiresAt?, maxUses? })`.
+- `useRevokeInvite(id)`, `useUpdateMemberRole({ clubId, userId, role })`, `useRemoveMember(...)`.
 
-- Recriar a INSERT policy de `clubs` para ser tolerante e correta:
-  ```sql
-  DROP POLICY "clubs auth insert" ON public.clubs;
-  CREATE POLICY "clubs auth insert" ON public.clubs
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() IS NOT NULL AND created_by = auth.uid());
-  ```
-  Combinado com o DEFAULT acima, isso é à prova de cliente: se omitir `created_by`, o default vira `auth.uid()` e a check passa; se enviar errado, falha como deve.
+## 4. Permissões (UI guards)
 
-- Adicionar `GRANT`s explícitos em todas as tabelas `public` (corrige fragilidade arquitetural):
-  ```sql
-  GRANT SELECT, INSERT, UPDATE, DELETE ON
-    public.clubs, public.club_members, public.teams, public.coaches,
-    public.athletes, public.fields, public.sessions, public.heatmaps,
-    public.reports, public.transfers, public.profiles
-    TO authenticated;
-  GRANT SELECT ON public.user_roles TO authenticated;
-  GRANT ALL ON
-    public.clubs, public.club_members, public.teams, public.coaches,
-    public.athletes, public.fields, public.sessions, public.heatmaps,
-    public.reports, public.transfers, public.profiles, public.user_roles
-    TO service_role;
-  ```
+Mapa inicial (ajustável depois):
+- OWNER/ADMIN: tudo, inclui gestão de membros/convites/clube
+- COACH/ASSISTANT_COACH: CRUD de times, atletas, sessões
+- ANALYST: leitura + criação de relatórios/heatmaps
+- ATHLETE: leitura do próprio perfil/sessões
 
-- Reforçar a INSERT policy de `club_members` para cobrir o caso do trigger SECURITY DEFINER (já cobre, mas explicitar):
-  *(sem mudanças — política atual `is_club_owner OR user_id = auth.uid()` já contempla o trigger e o owner.)*
+Refatorar `AppShell.tsx` para esconder itens de menu conforme role no clube atual (via `useMyRole`).
 
-**2. Ajuste no `clubsService.create`** (`src/services/index.ts`):
+## 5. Arquivos afetados
 
-- Manter `created_by: u.user.id` (cinto + suspensório com o DEFAULT).
-- Adicionar fallback: se `supabase.auth.getUser()` falhar ou retornar `null`, lançar erro claro **antes** do insert, em vez de deixar o RLS falhar opaco.
-- Após criar o clube, fazer um `await` curto e em seguida invalidar `myClubIds` (já feito no hook) — mantém comportamento.
+**Novos**
+- `supabase/migrations/<ts>_onboarding_invites_roles.sql`
+- `src/components/clubs/InviteCodeStep.tsx`
+- `src/components/settings/MembersTab.tsx`
+- `src/components/settings/InvitesTab.tsx`
+- `src/hooks/useMyRole.ts`
 
-**3. Garantir owner em `club_members` mesmo se o trigger falhar** (defesa em profundidade):
+**Editados**
+- `src/routes/onboarding.tsx` (3 steps + suporte a `?invite=`)
+- `src/routes/auth.tsx` (preservar `?invite=` no redirect pós-login)
+- `src/routes/_app.settings.tsx` (abas Membros/Convites)
+- `src/hooks/mutations.ts` (`useRedeemInvite`, `useCreateInvite`, `useRevokeInvite`, `useUpdateMemberRole`)
+- `src/hooks/queries.ts` (`useMyMemberships`, `useClubMembers`, `useClubInvites`)
+- `src/services/index.ts` (camada `invitesService`, `membershipService.updateRole`)
+- `src/components/app/AppShell.tsx` (gates por role)
 
-- No `useCreateClub` (`src/hooks/mutations.ts`), após `clubsService.create`, fazer um `upsert` idempotente em `club_members` com `{ club_id, user_id, role: 'owner' }` (`onConflict: 'club_id,user_id'`). O trigger já faz isso, mas o upsert garante que o usuário **sempre** vire membro do clube que acabou de criar, mesmo em cenários de erro do trigger.
+## 6. Validação
 
-**4. Isolamento e segurança (sem mudanças, apenas confirmar)**:
+1. Logout → signup → onboarding mostra 2 opções.
+2. "Criar clube": cria → vira OWNER em `club_members` (via trigger) → cria time → dashboard.
+3. Owner abre Settings → gera convite COACH → copia link.
+4. Logout → signup em outra conta → abre link `/onboarding?invite=...` → vira COACH automaticamente → vai para dashboard sem criar clube.
+5. Convite expirado/revogado/2º uso (max_uses=1) é rejeitado com toast claro.
+6. RLS: COACH não consegue ver/criar convites; OWNER/ADMIN consegue.
 
-- SELECT/UPDATE/DELETE de `clubs` continuam restritos a membros via `is_club_member` / `is_club_owner`.
-- Demais tabelas (`teams`, `athletes`, etc.) continuam escopadas por `is_club_member(auth.uid(), club_id)`.
-- Nenhum acesso a clubes de terceiros é aberto.
-
-### Validação (após aplicar)
-
-1. Logout → signup novo usuário → onboarding cria clube → cria time → `/dashboard` sem erro.
-2. `select * from clubs` no SQL editor com outro usuário não deve listar o clube alheio (RLS SELECT ok).
-3. `select * from club_members where user_id = auth.uid()` deve conter o registro `owner` do clube recém-criado.
-
-### Arquivos tocados
-
-- `supabase/migrations/<timestamp>_fix_clubs_rls_onboarding.sql` (nova)
-- `src/services/index.ts` (ajuste pequeno no `create`)
-- `src/hooks/mutations.ts` (upsert defensivo em `club_members`)
-
-### Fora de escopo
-
-- Refator de policies das demais tabelas.
-- Mudanças no fluxo visual do onboarding.
-- Convite de outros membros (próxima fase).
+## Fora de escopo (deixar para depois)
+- Convite por e-mail (envio real via Resend) — só geramos código/link agora.
+- UI completa de "trocar de clube" para usuário com múltiplos memberships (o `ClubSwitcher` já existe; revisitar se necessário).
