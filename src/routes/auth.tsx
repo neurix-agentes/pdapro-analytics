@@ -25,6 +25,7 @@ type Mode = "signin" | "signup";
 
 function AuthPage() {
   const navigate = useNavigate();
+  const { invite } = Route.useSearch();
   const { user } = useSession();
   const [mode, setMode] = useState<Mode>("signin");
   const [name, setName] = useState("");
@@ -32,9 +33,15 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const afterLogin = () => {
+    if (invite) navigate({ to: "/onboarding", search: { invite }, replace: true });
+    else navigate({ to: "/dashboard", replace: true });
+  };
+
   useEffect(() => {
-    if (user) navigate({ to: "/dashboard", replace: true });
-  }, [user, navigate]);
+    if (user) afterLogin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
