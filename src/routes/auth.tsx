@@ -51,7 +51,7 @@ function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Bem-vindo de volta!");
-        navigate({ to: "/dashboard", replace: true });
+        afterLogin();
       } else {
         const { error } = await supabase.auth.signUp({
           email,
