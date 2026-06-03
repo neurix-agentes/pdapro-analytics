@@ -4,7 +4,6 @@ import { clubsService, teamsService, coachesService, invitesService, type ClubRo
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import { supabase } from "@/integrations/supabase/client";
 import type { Club, Team, Coach } from "@/types";
-import type { Club, Team, Coach } from "@/types";
 
 export function useCreateClub() {
   const qc = useQueryClient();
