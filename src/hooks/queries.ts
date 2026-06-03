@@ -85,3 +85,26 @@ export const useFields = () => {
   const { clubId } = useScope();
   return useQuery({ queryKey: ["fields", clubId], queryFn: () => fieldsService.list({ clubId }) });
 };
+
+export const useMyMemberships = () =>
+  useQuery({ queryKey: ["myMemberships"], queryFn: () => membershipService.myMemberships() });
+
+export const useMyRole = (clubId: string | null | undefined) => {
+  const q = useMyMemberships();
+  const role = q.data?.find((m) => m.club_id === clubId)?.role ?? null;
+  return { ...q, role };
+};
+
+export const useClubInvites = (clubId: string | null | undefined) =>
+  useQuery({
+    queryKey: ["clubInvites", clubId],
+    queryFn: () => (clubId ? invitesService.listByClub(clubId) : Promise.resolve([])),
+    enabled: !!clubId,
+  });
+
+export const useClubMembers = (clubId: string | null | undefined) =>
+  useQuery({
+    queryKey: ["clubMembers", clubId],
+    queryFn: () => (clubId ? membershipService.listClubMembers(clubId) : Promise.resolve([])),
+    enabled: !!clubId,
+  });
