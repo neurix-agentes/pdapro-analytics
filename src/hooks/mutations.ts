@@ -97,3 +97,34 @@ export function useCreateCoach() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["coaches"] }),
   });
 }
+
+/* ============ INVITES ============ */
+
+export function useCreateInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { club_id: string; role: ClubRole; email?: string | null; max_uses?: number; expires_in_days?: number }) =>
+      invitesService.create(payload),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["clubInvites", v.club_id] }),
+  });
+}
+
+export function useRevokeInvite(clubId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => invitesService.revoke(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clubInvites", clubId] }),
+  });
+}
+
+export function useRedeemInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => invitesService.redeem(code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["myClubIds"] });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
+      qc.invalidateQueries({ queryKey: ["clubs"] });
+    },
+  });
+}
