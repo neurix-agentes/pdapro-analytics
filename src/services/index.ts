@@ -35,8 +35,8 @@ export const clubsService = {
   async create(
     payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">,
   ): Promise<Club> {
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) throw new Error("Não autenticado.");
+    const { data: u, error: uErr } = await supabase.auth.getUser();
+    if (uErr || !u.user) throw new Error("Sessão expirada. Faça login novamente.");
     const { data, error } = await supabase
       .from("clubs")
       .insert({
