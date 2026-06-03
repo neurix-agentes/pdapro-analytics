@@ -2,6 +2,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clubsService, teamsService, coachesService } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
+import { supabase } from "@/integrations/supabase/client";
 import type { Club, Team, Coach } from "@/types";
 
 export function useCreateClub() {
@@ -10,6 +11,15 @@ export function useCreateClub() {
     mutationFn: async (payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes"> & { logoFile?: File | null }) => {
       const { logoFile, ...rest } = payload;
       const created = await clubsService.create({ ...rest, logo_url: undefined });
+
+      // Defesa em profundidade: garante membership owner mesmo se o trigger falhar
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user) {
+        await supabase
+          .from("club_members")
+          .upsert({ club_id: created.id, user_id: u.user.id, role: "owner" }, { onConflict: "club_id,user_id" });
+      }
+
       if (logoFile) {
         const url = await uploadClubLogo(created.id, logoFile);
         await clubsService.update(created.id, { logo_url: url });
