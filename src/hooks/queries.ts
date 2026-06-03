@@ -2,7 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   athletesService, clubsService, coachesService, fieldsService,
-  heatmaps​Service, membershipService, invitesService, reportsService, sessionsService, teamsService,
+  heatmapsService, membershipService, invitesService, reportsService, sessionsService, teamsService,
 } from "@/services";
 import { useClubStore, useTeamStore, useSeasonStore } from "@/store";
 
