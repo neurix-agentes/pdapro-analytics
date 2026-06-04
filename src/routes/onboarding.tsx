@@ -246,6 +246,26 @@ function OnboardingPage() {
   );
 }
 
+function DebugPanel({
+  user, loading, myClubs, debug,
+}: { user: { id?: string; email?: string | null } | null; loading: boolean; myClubs: string[] | undefined; debug: Record<string, unknown> | null }) {
+  return (
+    <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] font-mono text-amber-100 space-y-1">
+      <div className="font-semibold text-amber-300">[DEBUG] Onboarding · auth + insert</div>
+      <div>auth.loading: <b>{String(loading)}</b></div>
+      <div>hook user.id: <b>{user?.id ?? "null"}</b></div>
+      <div>hook user.email: <b>{user?.email ?? "null"}</b></div>
+      <div>myClubs: <b>{myClubs ? JSON.stringify(myClubs) : "loading"}</b></div>
+      {debug && (
+        <details open className="mt-2">
+          <summary className="cursor-pointer text-amber-300">último evento de insert</summary>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(debug, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function ChoiceCard({
   icon, title, description, cta, onClick, highlight,
 }: { icon: React.ReactNode; title: string; description: string; cta: string; onClick: () => void; highlight?: boolean }) {
