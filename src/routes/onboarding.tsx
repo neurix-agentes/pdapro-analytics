@@ -8,6 +8,7 @@ import { useSession } from "@/hooks/useAuth";
 import { useMyClubIds } from "@/hooks/queries";
 import { useCreateClub, useCreateTeam, useRedeemInvite } from "@/hooks/mutations";
 import { useClubStore } from "@/store";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Boas-vindas · PDA Sport" }] }),
