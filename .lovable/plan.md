@@ -1,125 +1,100 @@
-# Plano — Onboarding com Convites e Roles Expandidas
+## Escopo
+Auditar o fluxo de onboarding para descobrir exatamente qual valor está chegando em `created_by` quando o app tenta criar o primeiro clube, exibindo esse diagnóstico em **console + UI temporária**.
 
-## Objetivo
+## O que já confirmei
+- O **único ponto de criação de clube** hoje passa por `src/hooks/mutations.ts` → `clubsService.create(...)`.
+- O **INSERT atual** está em `src/services/index.ts` e hoje monta este payload antes do `.insert(...)`:
+  - `name`
+  - `short_name`
+  - `city`
+  - `state`
+  - `country`
+  - `primary_color`
+  - `secondary_color`
+  - `description`
+  - `logo_url`
+  - `archived`
+  - `created_by: u.user.id`
+- Esse `u.user.id` vem de `await supabase.auth.getUser()` dentro do service.
+- O backend hospedado está saudável.
+- No snapshot atual não havia logs de console/rede para esse erro, então para ver o **payload real** preciso instrumentar o fluxo e reproduzir.
 
-Substituir o onboarding forçado ("crie um clube") por uma escolha clara:
-1. **Criar um novo clube** (vira OWNER)
-2. **Entrar em um clube existente** (via código de convite, recebe role definida pelo convite)
+## Plano
+### 1) Instrumentar autenticação no onboarding
+Adicionar diagnóstico temporário em:
+- `src/hooks/useAuth.ts`
+- `src/routes/onboarding.tsx`
+- `src/components/app/AppShell.tsx`
 
-Expandir as roles de `club_members` para suportar o ciclo completo do time esportivo, e usar exclusivamente `club_members.role` para controle de permissões (não usar `clubs.created_by` para autorização — apenas auditoria).
+Vou registrar e exibir:
+- `auth loading`
+- `session?.user?.id`
+- `user?.id`
+- estado de `useMyClubIds()` durante o onboarding
+- momento exato do clique em “Criar clube”
+- se algum hook/contexto está entregando `user = null`
 
-## 1. Banco de dados (migração)
+### 2) Instrumentar o service que faz o INSERT
+Adicionar logs temporários em `src/services/index.ts` ao redor de `supabase.from('clubs').insert(...)` para mostrar:
+- resultado de `supabase.auth.getSession()`
+- resultado de `supabase.auth.getUser()`
+- `auth user`
+- `auth uid`
+- `payload enviado ao insert`
+- valor calculado para `created_by`
+- retorno de erro completo do insert
 
-### Expandir enum `club_role`
-Atualmente: `owner, admin, coach, member`.
-Adicionar: `assistant_coach, analyst, athlete`.
-Manter `member` por compatibilidade (migrado depois) ou mapear para `analyst`.
+Também vou manter uma cópia serializável do payload real enviado para poder exibir na UI de diagnóstico.
 
-Final: `owner, admin, coach, assistant_coach, analyst, athlete` (drop `member` após migração de dados).
+### 3) Verificar existência de profile do usuário
+No mesmo fluxo de diagnóstico, checar e mostrar se existe `profile` para `user.id` antes da criação do clube:
+- `profile found: yes/no`
+- `profile.user_id`
+- `profile.email`
 
-### Nova tabela `club_invites`
-Campos de domínio:
-- `club_id` (FK lógica para clubs)
-- `code` (text único, ex.: 8 chars base32) — usado como link/código
-- `role` (club_role) — role que o convidado receberá
-- `email` (text, opcional — restringe a um e-mail específico)
-- `expires_at` (timestamptz, default now() + 30d)
-- `max_uses` (int, default 1), `uses` (int, default 0)
-- `created_by` (uuid, default auth.uid())
-- `revoked_at` (timestamptz, nullable)
+Isso responde se o trigger de criação de perfil rodou para o usuário que está tentando concluir o onboarding.
 
-Helper SQL: função `redeem_club_invite(_code text)` SECURITY DEFINER:
-- Valida código ativo (não expirado, não revogado, `uses < max_uses`, email match se setado)
-- Insere `club_members(club_id, user_id=auth.uid(), role)` com `ON CONFLICT DO NOTHING`
-- Incrementa `uses`
-- Retorna `club_id`
+### 4) Exibir um painel temporário de debug na tela
+Como você escolheu **Console + UI**, vou adicionar no onboarding um painel temporário com:
+- status da sessão
+- `user.id`
+- `created_by` efetivo
+- payload completo do insert
+- status de `profile`
+- resultado/erro bruto do insert
 
-### RLS de `club_invites`
-- SELECT: owner/admin do clube OU dono do código pelo `code` exato (lookup público restrito a 1 row via função, não policy)
-- INSERT/UPDATE/DELETE: apenas owner/admin do clube (`is_club_owner`)
-- O resgate **NÃO** depende de SELECT direto — usa `redeem_club_invite()` (SECURITY DEFINER) que faz lookup pelo `code`.
+Assim você consegue ver o valor real sem depender só do DevTools.
 
-### GRANTs
-Conceder `SELECT, INSERT, UPDATE, DELETE` em `club_invites` para `authenticated`; `EXECUTE` em `redeem_club_invite` para `authenticated`.
+### 5) Endurecer a guarda do submit sem alterar o objetivo da auditoria
+Sem mexer ainda em RLS, vou impedir tentativa prematura de criação quando a autenticação ainda não estiver pronta:
+- botão desabilitado enquanto a sessão estiver carregando
+- mensagem explícita se `user.id` ou `getUser()` não estiver disponível no submit
 
-### RLS de `clubs` (já corrigida na última migração — manter)
-Confirmar:
-- INSERT com `WITH CHECK (auth.uid() IS NOT NULL AND created_by = auth.uid())`
-- `created_by DEFAULT auth.uid()`
-- Trigger `tg_club_add_owner` insere owner em `club_members` automaticamente
+Isso ajuda a provar se o problema é corrida de autenticação.
 
-Permissões em todo o app passam a usar `is_club_member` / `is_club_owner` + checagem fina de role via novo helper `has_club_role(_user, _club, _roles[])` quando necessário (ex.: só COACH/ASSISTANT_COACH editam sessões).
+### 6) Validar e fechar o diagnóstico
+Depois de instrumentar, vou reproduzir o fluxo e confirmar:
+- qual valor chegou em `created_by`
+- se `auth.uid()` parece indisponível no momento do insert
+- se o `profile` existe para esse usuário
+- se o problema vem de sessão nula, race de auth, redirect prematuro, ou payload divergente
 
-## 2. Frontend
+## Detalhes técnicos
+### Arquivos que serão alterados
+- `src/services/index.ts`
+- `src/hooks/useAuth.ts`
+- `src/routes/onboarding.tsx`
+- `src/components/app/AppShell.tsx`
 
-### `src/routes/onboarding.tsx` — refazer com 3 telas
-```text
-Step 0: Escolha
-  ┌─ Criar novo clube  → Step 1A (form clube) → Step 2A (form time) → /dashboard
-  └─ Entrar em clube   → Step 1B (código convite) → /dashboard
-```
-- Cards grandes com ícones (`Building2` / `Mail`), descrições conforme briefing.
-- Step 1B: input do código + botão "Entrar". Chama `supabase.rpc('redeem_club_invite', { _code })`.
-- Em sucesso: `setCurrentClub(clubId)`, `qc.invalidateQueries(['myClubIds'])`, navega `/dashboard`.
-- Em erro: toast com mensagem da função (código inválido, expirado, e-mail divergente).
+### Resultado esperado da auditoria
+Ao final, teremos visível:
+- o **payload exato** passado para `supabase.from('clubs').insert(...)`
+- o **valor exato de `created_by`**
+- o **`user.id` disponível no momento da criação**
+- a confirmação de existência ou ausência do `profile`
+- a indicação clara de qual camada está falhando antes da policy ser avaliada
 
-### Settings → nova aba "Membros & Convites" (`/settings`)
-- Lista de membros do clube atual com sua role (somente owner/admin vê)
-- Botão "Gerar convite": modal escolhe role e (opcional) e-mail/expiração → gera código
-- Lista de convites ativos com botão "Copiar link" (`/onboarding?invite=CODE`) e "Revogar"
-- Owner/admin pode alterar role de outros membros (exceto owner único)
-
-### Aceite via link `/onboarding?invite=CODE`
-- Se logado e código presente: pula direto para Step 1B preenchido e aciona resgate.
-- Se deslogado: redireciona `/auth` preservando `?invite=` e retorna ao onboarding após login.
-
-### `src/hooks/useAuth.ts` / hooks de role
-- Novo `useMyMemberships()` retornando `[{ club_id, role }]`.
-- Novo `useMyRole(clubId)` para gates de UI.
-
-## 3. Mutations / serviços
-
-- `useRedeemInvite(code)` → `supabase.rpc('redeem_club_invite', { _code: code })`.
-- `useCreateInvite({ clubId, role, email?, expiresAt?, maxUses? })`.
-- `useRevokeInvite(id)`, `useUpdateMemberRole({ clubId, userId, role })`, `useRemoveMember(...)`.
-
-## 4. Permissões (UI guards)
-
-Mapa inicial (ajustável depois):
-- OWNER/ADMIN: tudo, inclui gestão de membros/convites/clube
-- COACH/ASSISTANT_COACH: CRUD de times, atletas, sessões
-- ANALYST: leitura + criação de relatórios/heatmaps
-- ATHLETE: leitura do próprio perfil/sessões
-
-Refatorar `AppShell.tsx` para esconder itens de menu conforme role no clube atual (via `useMyRole`).
-
-## 5. Arquivos afetados
-
-**Novos**
-- `supabase/migrations/<ts>_onboarding_invites_roles.sql`
-- `src/components/clubs/InviteCodeStep.tsx`
-- `src/components/settings/MembersTab.tsx`
-- `src/components/settings/InvitesTab.tsx`
-- `src/hooks/useMyRole.ts`
-
-**Editados**
-- `src/routes/onboarding.tsx` (3 steps + suporte a `?invite=`)
-- `src/routes/auth.tsx` (preservar `?invite=` no redirect pós-login)
-- `src/routes/_app.settings.tsx` (abas Membros/Convites)
-- `src/hooks/mutations.ts` (`useRedeemInvite`, `useCreateInvite`, `useRevokeInvite`, `useUpdateMemberRole`)
-- `src/hooks/queries.ts` (`useMyMemberships`, `useClubMembers`, `useClubInvites`)
-- `src/services/index.ts` (camada `invitesService`, `membershipService.updateRole`)
-- `src/components/app/AppShell.tsx` (gates por role)
-
-## 6. Validação
-
-1. Logout → signup → onboarding mostra 2 opções.
-2. "Criar clube": cria → vira OWNER em `club_members` (via trigger) → cria time → dashboard.
-3. Owner abre Settings → gera convite COACH → copia link.
-4. Logout → signup em outra conta → abre link `/onboarding?invite=...` → vira COACH automaticamente → vai para dashboard sem criar clube.
-5. Convite expirado/revogado/2º uso (max_uses=1) é rejeitado com toast claro.
-6. RLS: COACH não consegue ver/criar convites; OWNER/ADMIN consegue.
-
-## Fora de escopo (deixar para depois)
-- Convite por e-mail (envio real via Resend) — só geramos código/link agora.
-- UI completa de "trocar de clube" para usuário com múltiplos memberships (o `ClubSwitcher` já existe; revisitar se necessário).
+### Fora de escopo nesta etapa
+- refatorar toda a arquitetura multi-clube
+- reescrever RLS sem antes capturar o diagnóstico real
+- remover permanentemente os logs temporários nesta mesma etapa
