@@ -43,12 +43,42 @@ function OnboardingPage() {
   // Invite
   const [code, setCode] = useState(invite ?? "");
 
+  // === DEBUG ===
+  const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => setDebug((e as CustomEvent).detail);
+    window.addEventListener("pda:debug", h);
+    return () => window.removeEventListener("pda:debug", h);
+  }, []);
+
+  useEffect(() => {
+    console.log("[PDA DEBUG] onboarding auth state", {
+      loading,
+      userId: user?.id ?? null,
+      email: user?.email ?? null,
+      myClubs: { isLoading: myClubs.isLoading, data: myClubs.data },
+    });
+  }, [loading, user, myClubs.isLoading, myClubs.data]);
+
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth", search: invite ? { invite } : undefined, replace: true });
   }, [loading, user, navigate, invite]);
 
   async function submitClub(e: FormEvent) {
     e.preventDefault();
+    // Pré-checagem da sessão no clique
+    const s = await supabase.auth.getSession();
+    const u = await supabase.auth.getUser();
+    console.log("[PDA DEBUG] click 'Criar clube'", {
+      hookUserId: user?.id ?? null,
+      sessionUserId: s.data.session?.user?.id ?? null,
+      getUserId: u.data.user?.id ?? null,
+      getUserErr: u.error?.message ?? null,
+    });
+    if (!u.data.user) {
+      toast.error("Sessão não disponível. Faça login novamente.");
+      return;
+    }
     try {
       const club = await createClub.mutateAsync({
         name: clubName,
