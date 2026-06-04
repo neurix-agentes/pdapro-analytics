@@ -35,26 +35,70 @@ export const clubsService = {
   async create(
     payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">,
   ): Promise<Club> {
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u.user) throw new Error("Sessão expirada. Faça login novamente.");
+    // === DIAGNÓSTICO ONBOARDING ===
+    const sessionRes = await supabase.auth.getSession();
+    const userRes = await supabase.auth.getUser();
+    const authUser = userRes.data.user;
+    const sessionUser = sessionRes.data.session?.user ?? null;
+
+    let profileRow: unknown = null;
+    let profileErr: string | null = null;
+    if (authUser) {
+      const pr = await supabase.from("profiles").select("id,user_id,email,name").eq("user_id", authUser.id).maybeSingle();
+      profileRow = pr.data;
+      profileErr = pr.error?.message ?? null;
+    }
+
+    const insertPayload = {
+      name: payload.name,
+      short_name: payload.short_name,
+      city: payload.city,
+      state: payload.state,
+      country: payload.country,
+      primary_color: payload.primary_color,
+      secondary_color: payload.secondary_color,
+      description: payload.description,
+      logo_url: payload.logo_url,
+      archived: payload.archived ?? false,
+      created_by: authUser?.id,
+    };
+
+    const diag = {
+      step: "clubsService.create",
+      sessionPresent: !!sessionRes.data.session,
+      sessionUserId: sessionUser?.id ?? null,
+      sessionAccessTokenPresent: !!sessionRes.data.session?.access_token,
+      getUserError: userRes.error?.message ?? null,
+      authUserId: authUser?.id ?? null,
+      authUserEmail: authUser?.email ?? null,
+      profileFound: !!profileRow,
+      profileErr,
+      profileRow,
+      insertPayload,
+    };
+    console.group("[PDA DEBUG] clubs.insert");
+    console.log(diag);
+    console.groupEnd();
+    (globalThis as unknown as { __pdaDebug?: unknown }).__pdaDebug = diag;
+    window.dispatchEvent(new CustomEvent("pda:debug", { detail: diag }));
+
+    if (userRes.error || !authUser) {
+      throw new Error("Sessão expirada. Faça login novamente. (getUser falhou)");
+    }
+
     const { data, error } = await supabase
       .from("clubs")
-      .insert({
-        name: payload.name,
-        short_name: payload.short_name,
-        city: payload.city,
-        state: payload.state,
-        country: payload.country,
-        primary_color: payload.primary_color,
-        secondary_color: payload.secondary_color,
-        description: payload.description,
-        logo_url: payload.logo_url,
-        archived: payload.archived ?? false,
-        created_by: u.user.id,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
-    if (error) throw new Error(error.message);
+
+    if (error) {
+      const errDiag = { ...diag, insertError: { message: error.message, code: error.code, details: error.details, hint: error.hint } };
+      console.error("[PDA DEBUG] clubs.insert ERROR", errDiag);
+      (globalThis as unknown as { __pdaDebug?: unknown }).__pdaDebug = errDiag;
+      window.dispatchEvent(new CustomEvent("pda:debug", { detail: errDiag }));
+      throw new Error(error.message);
+    }
     return mapClubRow(data);
   },
   async update(id: string, patch: Partial<Club>): Promise<void> {

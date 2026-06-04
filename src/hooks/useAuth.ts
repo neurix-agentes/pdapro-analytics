@@ -8,14 +8,14 @@ export function useSession() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Subscribe FIRST to avoid missing the initial event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      console.log("[PDA DEBUG] onAuthStateChange", event, { userId: s?.user?.id ?? null });
       setSession(s);
       setLoading(false);
     });
 
-    // Then read current session
     supabase.auth.getSession().then(({ data }) => {
+      console.log("[PDA DEBUG] getSession (init)", { userId: data.session?.user?.id ?? null });
       setSession(data.session);
       setLoading(false);
     });

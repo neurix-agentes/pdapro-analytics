@@ -8,6 +8,7 @@ import { useSession } from "@/hooks/useAuth";
 import { useMyClubIds } from "@/hooks/queries";
 import { useCreateClub, useCreateTeam, useRedeemInvite } from "@/hooks/mutations";
 import { useClubStore } from "@/store";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Boas-vindas · PDA Sport" }] }),
@@ -42,12 +43,42 @@ function OnboardingPage() {
   // Invite
   const [code, setCode] = useState(invite ?? "");
 
+  // === DEBUG ===
+  const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => setDebug((e as CustomEvent).detail);
+    window.addEventListener("pda:debug", h);
+    return () => window.removeEventListener("pda:debug", h);
+  }, []);
+
+  useEffect(() => {
+    console.log("[PDA DEBUG] onboarding auth state", {
+      loading,
+      userId: user?.id ?? null,
+      email: user?.email ?? null,
+      myClubs: { isLoading: myClubs.isLoading, data: myClubs.data },
+    });
+  }, [loading, user, myClubs.isLoading, myClubs.data]);
+
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth", search: invite ? { invite } : undefined, replace: true });
   }, [loading, user, navigate, invite]);
 
   async function submitClub(e: FormEvent) {
     e.preventDefault();
+    // Pré-checagem da sessão no clique
+    const s = await supabase.auth.getSession();
+    const u = await supabase.auth.getUser();
+    console.log("[PDA DEBUG] click 'Criar clube'", {
+      hookUserId: user?.id ?? null,
+      sessionUserId: s.data.session?.user?.id ?? null,
+      getUserId: u.data.user?.id ?? null,
+      getUserErr: u.error?.message ?? null,
+    });
+    if (!u.data.user) {
+      toast.error("Sessão não disponível. Faça login novamente.");
+      return;
+    }
     try {
       const club = await createClub.mutateAsync({
         name: clubName,
@@ -109,6 +140,7 @@ function OnboardingPage() {
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-2xl"
       >
+        <DebugPanel user={user} loading={loading} myClubs={myClubs.data} debug={debug} />
         <div className="glass rounded-3xl p-8 md:p-10 glow-primary">
           <div className="flex justify-center"><Logo size="lg" /></div>
 
@@ -210,6 +242,26 @@ function OnboardingPage() {
           )}
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+function DebugPanel({
+  user, loading, myClubs, debug,
+}: { user: { id?: string; email?: string | null } | null; loading: boolean; myClubs: string[] | undefined; debug: Record<string, unknown> | null }) {
+  return (
+    <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] font-mono text-amber-100 space-y-1">
+      <div className="font-semibold text-amber-300">[DEBUG] Onboarding · auth + insert</div>
+      <div>auth.loading: <b>{String(loading)}</b></div>
+      <div>hook user.id: <b>{user?.id ?? "null"}</b></div>
+      <div>hook user.email: <b>{user?.email ?? "null"}</b></div>
+      <div>myClubs: <b>{myClubs ? JSON.stringify(myClubs) : "loading"}</b></div>
+      {debug && (
+        <details open className="mt-2">
+          <summary className="cursor-pointer text-amber-300">último evento de insert</summary>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(debug, null, 2)}</pre>
+        </details>
+      )}
     </div>
   );
 }
