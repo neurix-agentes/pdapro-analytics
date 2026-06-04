@@ -140,6 +140,7 @@ function OnboardingPage() {
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-2xl"
       >
+        <DebugPanel user={user} loading={loading} myClubs={myClubs.data} debug={debug} />
         <div className="glass rounded-3xl p-8 md:p-10 glow-primary">
           <div className="flex justify-center"><Logo size="lg" /></div>
 
