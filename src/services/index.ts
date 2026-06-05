@@ -81,13 +81,6 @@ export const clubsService = {
       whoamiResult: whoamiRes.data,
       whoamiError: whoamiRes.error?.message ?? null,
     };
-      authUserId: authUser?.id ?? null,
-      authUserEmail: authUser?.email ?? null,
-      profileFound: !!profileRow,
-      profileErr,
-      profileRow,
-      insertPayload,
-    };
     console.group("[PDA DEBUG] clubs.insert");
     console.log(diag);
     console.groupEnd();
