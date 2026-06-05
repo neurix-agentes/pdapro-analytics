@@ -639,6 +639,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      debug_whoami: { Args: never; Returns: Json }
       has_club_role: {
         Args: {
           _club_id: string
