@@ -63,6 +63,9 @@ export const clubsService = {
       created_by: authUser?.id,
     };
 
+    // ⚡ DIAGNÓSTICO CRÍTICO: o que o Postgres realmente enxerga via PostgREST?
+    const whoamiRes = await supabase.rpc("debug_whoami");
+
     const diag = {
       step: "clubsService.create",
       sessionPresent: !!sessionRes.data.session,
@@ -75,6 +78,8 @@ export const clubsService = {
       profileErr,
       profileRow,
       insertPayload,
+      whoamiResult: whoamiRes.data,
+      whoamiError: whoamiRes.error?.message ?? null,
     };
     console.group("[PDA DEBUG] clubs.insert");
     console.log(diag);
