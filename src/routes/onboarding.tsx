@@ -51,6 +51,47 @@ function OnboardingPage() {
     return () => window.removeEventListener("pda:debug", h);
   }, []);
 
+  // Intercept fetch to capture REAL headers sent to PostgREST /rest/v1/clubs
+  useEffect(() => {
+    const w = window as unknown as { __pdaFetchPatched?: boolean };
+    if (w.__pdaFetchPatched) return;
+    w.__pdaFetchPatched = true;
+    const orig = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/rest/v1/clubs") && (init?.method ?? "GET").toUpperCase() === "POST") {
+        const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+        const authH = headers.get("authorization") || headers.get("Authorization");
+        const apikeyH = headers.get("apikey");
+        let jwtClaims: unknown = null;
+        if (authH?.startsWith("Bearer ")) {
+          try {
+            const parts = authH.slice(7).split(".");
+            jwtClaims = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+          } catch (e) { jwtClaims = `decode_error: ${String(e)}`; }
+        }
+        const fetchDiag = {
+          step: "fetch.intercept",
+          url,
+          method: init?.method,
+          hasAuthorization: !!authH,
+          authPrefix: authH?.slice(0, 24) ?? null,
+          authIsAnonKey: authH && apikeyH ? authH.includes(apikeyH) : null,
+          apikeyPresent: !!apikeyH,
+          apikeyPrefix: apikeyH?.slice(0, 24) ?? null,
+          jwtSub: (jwtClaims as { sub?: string } | null)?.sub ?? null,
+          jwtRole: (jwtClaims as { role?: string } | null)?.role ?? null,
+          jwtExp: (jwtClaims as { exp?: number } | null)?.exp ?? null,
+          nowEpoch: Math.floor(Date.now() / 1000),
+          body: typeof init?.body === "string" ? init.body : "(non-string body)",
+        };
+        console.warn("[PDA DEBUG] fetch /rest/v1/clubs", fetchDiag);
+        window.dispatchEvent(new CustomEvent("pda:debug", { detail: fetchDiag }));
+      }
+      return orig(input, init);
+    };
+  }, []);
+
   useEffect(() => {
     console.log("[PDA DEBUG] onboarding auth state", {
       loading,
