@@ -9,6 +9,7 @@ import { useMyClubIds } from "@/hooks/queries";
 import { useCreateClub, useCreateTeam, useRedeemInvite } from "@/hooks/mutations";
 import { useClubStore } from "@/store";
 import { supabase } from "@/integrations/supabase/client";
+import { buildPdaTrace, clearActivePdaTrace, emitPdaDebug, serializeSupabaseError, setActivePdaTrace } from "@/lib/pda-debug";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Boas-vindas · PDA Sport" }] }),
@@ -107,6 +108,9 @@ function OnboardingPage() {
 
   async function submitClub(e: FormEvent) {
     e.preventDefault();
+    const trace = buildPdaTrace("onboarding-create-club");
+    setActivePdaTrace(trace);
+    emitPdaDebug({ step: "SUBMIT_CLUB_START", trace });
     // Pré-checagem da sessão no clique
     const s = await supabase.auth.getSession();
     const u = await supabase.auth.getUser();
@@ -117,10 +121,24 @@ function OnboardingPage() {
       getUserErr: u.error?.message ?? null,
     });
     if (!u.data.user) {
+      emitPdaDebug({ step: "SUBMIT_CLUB_ERROR", phase: "precheck", error: serializeSupabaseError(new Error("Sessão não disponível. Faça login novamente.")) });
+      clearActivePdaTrace();
       toast.error("Sessão não disponível. Faça login novamente.");
       return;
     }
     try {
+      emitPdaDebug({
+        step: "SUBMIT_CLUB_PAYLOAD",
+        payload: {
+          name: clubName,
+          short_name: shortName.toUpperCase().slice(0, 4),
+          city,
+          country: "Brasil",
+          primary_color: "#00FF88",
+          secondary_color: "#0A2540",
+          archived: false,
+        },
+      });
       const club = await createClub.mutateAsync({
         name: clubName,
         short_name: shortName.toUpperCase().slice(0, 4),
@@ -130,12 +148,21 @@ function OnboardingPage() {
         secondary_color: "#0A2540",
         archived: false,
       });
+      emitPdaDebug({ step: "SUBMIT_CLUB_MUTATION_SUCCESS", club });
       setClubId(club.id);
+      emitPdaDebug({ step: "SET_CLUB_ID_SUCCESS", clubId: club.id });
       setCurrentClub(club.id);
+      emitPdaDebug({ step: "SET_CURRENT_CLUB_SUCCESS", clubId: club.id });
+      emitPdaDebug({ step: "REFETCH_START", query: "myClubs.refetch()" });
       await myClubs.refetch();
+      emitPdaDebug({ step: "REFETCH_SUCCESS", query: "myClubs.refetch()" });
       toast.success("Clube criado! Você é o OWNER.");
       setStep("team");
+      emitPdaDebug({ step: "SET_STEP_SUCCESS", nextStep: "team" });
+      clearActivePdaTrace();
     } catch (err) {
+      emitPdaDebug({ step: "SUBMIT_CLUB_ERROR", phase: "mutation_flow", error: serializeSupabaseError(err) });
+      clearActivePdaTrace();
       toast.error(err instanceof Error ? err.message : "Erro ao criar clube.");
     }
   }
