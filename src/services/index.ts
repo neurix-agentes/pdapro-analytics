@@ -20,7 +20,7 @@ const inScope = <T extends { club_id: string; team_id?: string }>(s: Scope) => (
 
 // === PDA AUDITORIA — flag local. Trocar para "A" | "B" | "C" e submeter o form.
 // "off" = comportamento de produção (insert + select.single com discriminação INSERT vs RETURNING).
-const PDA_AUDIT_MODE: "off" | "A" | "B" | "C" = "C";
+const PDA_AUDIT_MODE = "C" as "off" | "A" | "B" | "C";
 
 /* ===================== CLUBS ===================== */
 export const clubsService = {
