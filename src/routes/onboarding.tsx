@@ -1,15 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Building2, ShieldCheck, Sparkles, Mail, ArrowRight, KeyRound } from "lucide-react";
+import { Building2, Sparkles, Mail, ArrowRight, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 import { useSession } from "@/hooks/useAuth";
 import { useMyClubIds } from "@/hooks/queries";
 import { useCreateClub, useCreateTeam, useRedeemInvite } from "@/hooks/mutations";
 import { useClubStore } from "@/store";
-import { supabase } from "@/integrations/supabase/client";
-import { buildPdaTrace, clearActivePdaTrace, emitPdaDebug, serializeSupabaseError, setActivePdaTrace } from "@/lib/pda-debug";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Boas-vindas · PDA Sport" }] }),
@@ -44,104 +42,28 @@ function OnboardingPage() {
   // Invite
   const [code, setCode] = useState(invite ?? "");
 
-  // === DEBUG (DEV-only) ===
-  const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const h = (e: Event) => setDebug((e as CustomEvent).detail);
-    window.addEventListener("pda:debug", h);
-    return () => window.removeEventListener("pda:debug", h);
-  }, []);
-
-  // Intercept fetch to capture REAL headers sent to PostgREST /rest/v1/clubs (DEV-only)
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const w = window as unknown as { __pdaFetchPatched?: boolean };
-    if (w.__pdaFetchPatched) return;
-    w.__pdaFetchPatched = true;
-    const orig = window.fetch.bind(window);
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.includes("/rest/v1/clubs") && (init?.method ?? "GET").toUpperCase() === "POST") {
-        const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
-        const authH = headers.get("authorization") || headers.get("Authorization");
-        const apikeyH = headers.get("apikey");
-        let jwtClaims: unknown = null;
-        if (authH?.startsWith("Bearer ")) {
-          try {
-            const parts = authH.slice(7).split(".");
-            jwtClaims = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-          } catch (e) { jwtClaims = `decode_error: ${String(e)}`; }
-        }
-        const fetchDiag = {
-          step: "fetch.intercept",
-          url,
-          method: init?.method,
-          hasAuthorization: !!authH,
-          authPrefix: authH?.slice(0, 24) ?? null,
-          authIsAnonKey: authH && apikeyH ? authH.includes(apikeyH) : null,
-          apikeyPresent: !!apikeyH,
-          apikeyPrefix: apikeyH?.slice(0, 24) ?? null,
-          jwtSub: (jwtClaims as { sub?: string } | null)?.sub ?? null,
-          jwtRole: (jwtClaims as { role?: string } | null)?.role ?? null,
-          jwtExp: (jwtClaims as { exp?: number } | null)?.exp ?? null,
-          nowEpoch: Math.floor(Date.now() / 1000),
-          body: typeof init?.body === "string" ? init.body : "(non-string body)",
-        };
-        console.warn("[PDA DEBUG] fetch /rest/v1/clubs", fetchDiag);
-        window.dispatchEvent(new CustomEvent("pda:debug", { detail: fetchDiag }));
-      }
-      return orig(input, init);
-    };
-  }, []);
-
-
-  useEffect(() => {
-    console.log("[PDA DEBUG] onboarding auth state", {
-      loading,
-      userId: user?.id ?? null,
-      email: user?.email ?? null,
-      myClubs: { isLoading: myClubs.isLoading, data: myClubs.data },
-    });
-  }, [loading, user, myClubs.isLoading, myClubs.data]);
-
+  // Auth gate
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth", search: invite ? { invite } : undefined, replace: true });
   }, [loading, user, navigate, invite]);
 
+  // Regra "1 clube por usuário": se já é membro de algum clube e não está resgatando convite,
+  // pula o onboarding e vai direto pro dashboard.
+  useEffect(() => {
+    if (loading || !user) return;
+    if (myClubs.isLoading) return;
+    if (invite) return; // fluxo de convite tem prioridade
+    if (clubId) return; // acabou de criar agora; deixa seguir para "team"
+    const ids = myClubs.data ?? [];
+    if (ids.length > 0) {
+      setCurrentClub(ids[0]);
+      navigate({ to: "/dashboard", replace: true });
+    }
+  }, [loading, user, myClubs.isLoading, myClubs.data, invite, clubId, navigate, setCurrentClub]);
+
   async function submitClub(e: FormEvent) {
     e.preventDefault();
-    const trace = buildPdaTrace("onboarding-create-club");
-    setActivePdaTrace(trace);
-    emitPdaDebug({ step: "SUBMIT_CLUB_START", trace });
-    // Pré-checagem da sessão no clique
-    const s = await supabase.auth.getSession();
-    const u = await supabase.auth.getUser();
-    console.log("[PDA DEBUG] click 'Criar clube'", {
-      hookUserId: user?.id ?? null,
-      sessionUserId: s.data.session?.user?.id ?? null,
-      getUserId: u.data.user?.id ?? null,
-      getUserErr: u.error?.message ?? null,
-    });
-    if (!u.data.user) {
-      emitPdaDebug({ step: "SUBMIT_CLUB_ERROR", phase: "precheck", error: serializeSupabaseError(new Error("Sessão não disponível. Faça login novamente.")) });
-      clearActivePdaTrace();
-      toast.error("Sessão não disponível. Faça login novamente.");
-      return;
-    }
     try {
-      emitPdaDebug({
-        step: "SUBMIT_CLUB_PAYLOAD",
-        payload: {
-          name: clubName,
-          short_name: shortName.toUpperCase().slice(0, 4),
-          city,
-          country: "Brasil",
-          primary_color: "#00FF88",
-          secondary_color: "#0A2540",
-          archived: false,
-        },
-      });
       const club = await createClub.mutateAsync({
         name: clubName,
         short_name: shortName.toUpperCase().slice(0, 4),
@@ -151,21 +73,12 @@ function OnboardingPage() {
         secondary_color: "#0A2540",
         archived: false,
       });
-      emitPdaDebug({ step: "SUBMIT_CLUB_MUTATION_SUCCESS", club });
       setClubId(club.id);
-      emitPdaDebug({ step: "SET_CLUB_ID_SUCCESS", clubId: club.id });
       setCurrentClub(club.id);
-      emitPdaDebug({ step: "SET_CURRENT_CLUB_SUCCESS", clubId: club.id });
-      emitPdaDebug({ step: "REFETCH_START", query: "myClubs.refetch()" });
       await myClubs.refetch();
-      emitPdaDebug({ step: "REFETCH_SUCCESS", query: "myClubs.refetch()" });
       toast.success("Clube criado! Você é o OWNER.");
       setStep("team");
-      emitPdaDebug({ step: "SET_STEP_SUCCESS", nextStep: "team" });
-      clearActivePdaTrace();
     } catch (err) {
-      emitPdaDebug({ step: "SUBMIT_CLUB_ERROR", phase: "mutation_flow", error: serializeSupabaseError(err) });
-      clearActivePdaTrace();
       toast.error(err instanceof Error ? err.message : "Erro ao criar clube.");
     }
   }
@@ -211,9 +124,6 @@ function OnboardingPage() {
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-2xl"
       >
-        {import.meta.env.DEV && (
-          <DebugPanel user={user} loading={loading} myClubs={myClubs.data} debug={debug} />
-        )}
         <div className="glass rounded-3xl p-8 md:p-10 glow-primary">
           <div className="flex justify-center"><Logo size="lg" /></div>
 
@@ -315,26 +225,6 @@ function OnboardingPage() {
           )}
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-function DebugPanel({
-  user, loading, myClubs, debug,
-}: { user: { id?: string; email?: string | null } | null; loading: boolean; myClubs: string[] | undefined; debug: Record<string, unknown> | null }) {
-  return (
-    <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] font-mono text-amber-100 space-y-1">
-      <div className="font-semibold text-amber-300">[DEBUG] Onboarding · auth + insert</div>
-      <div>auth.loading: <b>{String(loading)}</b></div>
-      <div>hook user.id: <b>{user?.id ?? "null"}</b></div>
-      <div>hook user.email: <b>{user?.email ?? "null"}</b></div>
-      <div>myClubs: <b>{myClubs ? JSON.stringify(myClubs) : "loading"}</b></div>
-      {debug && (
-        <details open className="mt-2">
-          <summary className="cursor-pointer text-amber-300">último evento de insert</summary>
-          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(debug, null, 2)}</pre>
-        </details>
-      )}
     </div>
   );
 }
