@@ -7,6 +7,7 @@ import {
   mockAthletes, mockFields, mockHeatmaps, mockReports, mockSessions,
 } from "@/mocks/data";
 import { supabase } from "@/integrations/supabase/client";
+import { emitPdaDebug, serializeSupabaseError } from "@/lib/pda-debug";
 import type { Club, Team, Coach, Athlete, Session as PdaSession, Heatmap, Report, Field } from "@/types";
 
 export interface Scope { clubId?: string | null; teamId?: string | null }
@@ -35,6 +36,7 @@ export const clubsService = {
   async create(
     payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">,
   ): Promise<Club> {
+    emitPdaDebug({ step: "INSERT_CLUB_START", inputPayload: payload });
     // === DIAGNÓSTICO ONBOARDING ===
     const sessionRes = await supabase.auth.getSession();
     const userRes = await supabase.auth.getUser();
@@ -79,31 +81,39 @@ export const clubsService = {
       profileRow,
       insertPayload,
       whoamiResult: whoamiRes.data,
-      whoamiError: whoamiRes.error?.message ?? null,
+      whoamiError: serializeSupabaseError(whoamiRes.error),
     };
-    console.group("[PDA DEBUG] clubs.insert");
-    console.log(diag);
-    console.groupEnd();
-    (globalThis as unknown as { __pdaDebug?: unknown }).__pdaDebug = diag;
-    window.dispatchEvent(new CustomEvent("pda:debug", { detail: diag }));
+    emitPdaDebug({ step: "INSERT_PAYLOAD", payload: insertPayload, diag });
+    console.log("INSERT_PAYLOAD", insertPayload);
 
     if (userRes.error || !authUser) {
+      emitPdaDebug({
+        step: "INSERT_CLUB_ERROR",
+        phase: "auth_precheck",
+        error: serializeSupabaseError(userRes.error ?? new Error("Sessão expirada. Faça login novamente. (getUser falhou)")),
+      });
       throw new Error("Sessão expirada. Faça login novamente. (getUser falhou)");
     }
 
+    emitPdaDebug({ step: "SELECT_CLUB_START", query: "supabase.from('clubs').insert(...).select('*').single()" });
     const { data, error } = await supabase
       .from("clubs")
       .insert(insertPayload)
       .select("*")
       .single();
 
+    console.log("INSERT_RESULT", data ?? null);
+    console.log("INSERT_ERROR", error ?? null);
+
     if (error) {
-      const errDiag = { ...diag, insertError: { message: error.message, code: error.code, details: error.details, hint: error.hint } };
-      console.error("[PDA DEBUG] clubs.insert ERROR", errDiag);
-      (globalThis as unknown as { __pdaDebug?: unknown }).__pdaDebug = errDiag;
-      window.dispatchEvent(new CustomEvent("pda:debug", { detail: errDiag }));
+      const serializedError = serializeSupabaseError(error);
+      emitPdaDebug({ step: "INSERT_CLUB_ERROR", query: "insert into public.clubs returning representation", payload: insertPayload, error: serializedError, diag });
+      emitPdaDebug({ step: "SELECT_CLUB_ERROR", query: "implicit select from returning representation on clubs", error: serializedError });
       throw new Error(error.message);
     }
+
+    emitPdaDebug({ step: "INSERT_CLUB_SUCCESS", result: data, diag });
+    emitPdaDebug({ step: "SELECT_CLUB_SUCCESS", result: data, query: "implicit select from returning representation on clubs" });
     return mapClubRow(data);
   },
   async update(id: string, patch: Partial<Club>): Promise<void> {
