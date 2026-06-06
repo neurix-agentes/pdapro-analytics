@@ -664,6 +664,7 @@ export type Database = {
         Returns: boolean
       }
       redeem_club_invite: { Args: { _code: string }; Returns: string }
+      security_posture_check: { Args: never; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "club_owner" | "coach" | "athlete"
