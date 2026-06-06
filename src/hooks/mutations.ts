@@ -2,8 +2,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clubsService, teamsService, coachesService, invitesService, type ClubRole } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
-import { supabase } from "@/integrations/supabase/client";
-import { emitPdaDebug, serializeSupabaseError } from "@/lib/pda-debug";
 import type { Club, Team, Coach } from "@/types";
 
 export function useCreateClub() {
@@ -11,26 +9,7 @@ export function useCreateClub() {
   return useMutation({
     mutationFn: async (payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes"> & { logoFile?: File | null }) => {
       const { logoFile, ...rest } = payload;
-      emitPdaDebug({ step: "MUTATION_CREATE_CLUB_START", payload: rest, hasLogoFile: !!logoFile });
       const created = await clubsService.create({ ...rest, logo_url: undefined });
-      emitPdaDebug({ step: "MUTATION_CREATE_CLUB_SUCCESS", created });
-
-      // Defesa em profundidade: garante membership owner mesmo se o trigger falhar
-      emitPdaDebug({ step: "MEMBERSHIP_START", query: "supabase.from('club_members').upsert(...)", clubId: created.id });
-      const { data: u } = await supabase.auth.getUser();
-      if (u.user) {
-        const { data, error } = await supabase
-          .from("club_members")
-          .upsert({ club_id: created.id, user_id: u.user.id, role: "owner" }, { onConflict: "club_id,user_id" });
-        if (error) {
-          emitPdaDebug({ step: "MEMBERSHIP_ERROR", query: "upsert into public.club_members", payload: { club_id: created.id, user_id: u.user.id, role: "owner" }, error: serializeSupabaseError(error) });
-          throw new Error(error.message);
-        }
-        emitPdaDebug({ step: "MEMBERSHIP_SUCCESS", result: data ?? null, payload: { club_id: created.id, user_id: u.user.id, role: "owner" } });
-      } else {
-        emitPdaDebug({ step: "MEMBERSHIP_ERROR", query: "upsert into public.club_members", error: serializeSupabaseError(new Error("getUser returned no authenticated user")) });
-      }
-
       if (logoFile) {
         const url = await uploadClubLogo(created.id, logoFile);
         await clubsService.update(created.id, { logo_url: url });
@@ -39,13 +18,9 @@ export function useCreateClub() {
       return created;
     },
     onSuccess: () => {
-      emitPdaDebug({ step: "INVALIDATE_START", queries: [["clubs"], ["myClubIds"]] });
       qc.invalidateQueries({ queryKey: ["clubs"] });
       qc.invalidateQueries({ queryKey: ["myClubIds"] });
-      emitPdaDebug({ step: "INVALIDATE_SUCCESS", queries: [["clubs"], ["myClubIds"]] });
-    },
-    onError: (error) => {
-      emitPdaDebug({ step: "MUTATION_CREATE_CLUB_ERROR", error: serializeSupabaseError(error) });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
     },
   });
 }
