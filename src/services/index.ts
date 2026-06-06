@@ -18,9 +18,10 @@ const inScope = <T extends { club_id: string; team_id?: string }>(s: Scope) => (
   return true;
 };
 
-// === PDA AUDITORIA — flag local. Trocar para "A" | "B" | "C" e submeter o form.
+// === PDA AUDITORIA — flag local. Trocar para "A" | "B" | "C" | "ALL" e submeter o form.
+// "ALL" = executa A, B e C automaticamente na mesma submissão e emite um resumo comparativo.
 // "off" = comportamento de produção (insert + select.single com discriminação INSERT vs RETURNING).
-const PDA_AUDIT_MODE = "C" as "off" | "A" | "B" | "C";
+const PDA_AUDIT_MODE = "ALL" as "off" | "A" | "B" | "C" | "ALL";
 
 /* ===================== CLUBS ===================== */
 export const clubsService = {
@@ -120,39 +121,120 @@ export const clubsService = {
       emitPdaDebug({ step: "WHOAMI_BEFORE_INSERT_THREW", error: serializeSupabaseError(e) });
     }
 
-    // === TRILHA 2 — TESTE A: insert sem returning ===
-    if (PDA_AUDIT_MODE === "A") {
-      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-A]` };
-      emitPdaDebug({ step: "TEST_A_INSERT_ONLY_START", payload: auditPayload, query: "supabase.from('clubs').insert(payload) // no select" });
+    // === Helpers reutilizáveis: TESTE A / B / C ===
+    const runTestA = async (suffix: string) => {
+      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-A${suffix}]` };
+      emitPdaDebug({ step: "TEST_A_INSERT_ONLY_START", payload: auditPayload, query: "insert(payload) // no select" });
       const res = await supabase.from("clubs").insert(auditPayload);
+      const insertError = serializeSupabaseError(res.error);
+      emitPdaDebug({ step: "TEST_A_INSERT_ONLY_RESULT", insertData: res.data ?? null, insertError, status: res.status, statusText: res.statusText });
+      return { ok: !res.error, status: res.status, insertData: res.data ?? null, insertError };
+    };
+
+    const runTestB = async (suffix: string) => {
+      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-B${suffix}]` };
+      emitPdaDebug({ step: "TEST_B_INSERT_SELECT_ID_START", payload: auditPayload, query: "insert(payload).select('id')" });
+      const res = await supabase.from("clubs").insert(auditPayload).select("id");
+      const selectError = serializeSupabaseError(res.error);
+      const rowsReturned = Array.isArray(res.data) ? res.data.length : null;
+      emitPdaDebug({ step: "TEST_B_INSERT_SELECT_ID_RESULT", data: res.data ?? null, error: selectError, status: res.status, statusText: res.statusText, rowsReturned });
+      return { ok: !res.error, status: res.status, data: res.data ?? null, selectError, rowsReturned };
+    };
+
+    const runTestC = async (suffix: string) => {
+      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-C${suffix}]` };
+      emitPdaDebug({ step: "TEST_C_INSERT_RETURNING_START", payload: auditPayload, query: "insert(...).select('*').single()" });
+      const res = await supabase.from("clubs").insert(auditPayload).select("*").single();
+      const err = serializeSupabaseError(res.error);
+      let phase: "ok" | "post_insert_select" | "insert_with_check" | "unknown" = "ok";
+      if (res.error) {
+        const msg = (res.error.message ?? "").toLowerCase();
+        const code = (res.error as { code?: string | null }).code ?? null;
+        if (code === "PGRST116") phase = "post_insert_select";
+        else if (code === "42501" || msg.includes("violates row-level security")) phase = "insert_with_check";
+        else phase = "unknown";
+      }
       emitPdaDebug({
-        step: "TEST_A_INSERT_ONLY_RESULT",
-        insertData: res.data ?? null,
-        insertError: serializeSupabaseError(res.error),
-        status: res.status,
-        statusText: res.statusText,
+        step: res.error
+          ? phase === "post_insert_select" ? "RETURNING_ERROR"
+          : phase === "insert_with_check" ? "INSERT_ERROR"
+          : "INSERT_OR_RETURNING_UNKNOWN_ERROR"
+          : "TEST_C_INSERT_RETURNING_OK",
+        phase, data: res.data ?? null, error: err, status: res.status, statusText: res.statusText,
       });
-      if (res.error) throw new Error(`[TESTE A] ${res.error.message}`);
-      throw new Error("[TESTE A] INSERT-only ok. Veja painel de debug. Troque PDA_AUDIT_MODE para 'B' ou 'C'.");
+      return { ok: !res.error, status: res.status, data: res.data ?? null, error: err, phase };
+    };
+
+    if (PDA_AUDIT_MODE === "A") {
+      const r = await runTestA("");
+      if (!r.ok) throw new Error(`[TESTE A] ${r.insertError?.message ?? "falhou"}`);
+      throw new Error("[TESTE A] INSERT-only ok. Veja painel de debug.");
+    }
+    if (PDA_AUDIT_MODE === "B") {
+      const r = await runTestB("");
+      if (!r.ok) throw new Error(`[TESTE B] ${r.selectError?.message ?? "falhou"}`);
+      if (!(r.data as unknown[] | null)?.length) throw new Error("[TESTE B] INSERT ok mas select('id') retornou 0 linhas — RLS SELECT bloqueando.");
+      throw new Error("[TESTE B] INSERT+select(id) ok. Veja painel de debug.");
     }
 
-    // === TRILHA 2 — TESTE B: insert + select('id') sem .single() ===
-    if (PDA_AUDIT_MODE === "B") {
-      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-B]` };
-      emitPdaDebug({ step: "TEST_B_INSERT_SELECT_ID_START", payload: auditPayload, query: "supabase.from('clubs').insert(payload).select('id')" });
-      const res = await supabase.from("clubs").insert(auditPayload).select("id");
-      emitPdaDebug({
-        step: "TEST_B_INSERT_SELECT_ID_RESULT",
-        data: res.data ?? null,
-        error: serializeSupabaseError(res.error),
-        status: res.status,
-        statusText: res.statusText,
-        rowsReturned: Array.isArray(res.data) ? res.data.length : null,
-      });
-      if (res.error) throw new Error(`[TESTE B] ${res.error.message}`);
-      const row = (res.data ?? [])[0];
-      if (!row) throw new Error("[TESTE B] INSERT ok mas select('id') retornou 0 linhas — RLS de SELECT bloqueando.");
-      throw new Error("[TESTE B] INSERT+select(id) ok. Veja painel de debug. Troque PDA_AUDIT_MODE para 'C' ou 'off'.");
+    if (PDA_AUDIT_MODE === "ALL") {
+      const runId = Math.random().toString(36).slice(2, 6).toUpperCase();
+      emitPdaDebug({ step: "AUDIT_ALL_START", runId, sequence: ["A", "B", "C"] });
+
+      const a = await runTestA(`-${runId}`);
+      const b = await runTestB(`-${runId}`);
+      const c = await runTestC(`-${runId}`);
+
+      const verdicts: string[] = [];
+      if (!a.ok && (a.insertError?.message ?? "").toLowerCase().includes("violates row-level security")) {
+        verdicts.push("A: INSERT bloqueado por RLS WITH CHECK → JWT chegando como anon OU outra policy reprovando.");
+      } else if (a.ok) {
+        verdicts.push("A: INSERT puro OK → policy de INSERT está liberando.");
+      } else {
+        verdicts.push(`A: falhou com erro não-RLS (code=${a.insertError?.code ?? "n/a"}).`);
+      }
+      if (b.ok && (b.rowsReturned ?? 0) === 0) {
+        verdicts.push("B: INSERT ok mas SELECT('id') retornou 0 linhas → policy SELECT não enxerga a linha no mesmo round-trip.");
+      } else if (b.ok) {
+        verdicts.push("B: INSERT + select('id') OK → SELECT pós-insert funciona com cardinalidade flexível.");
+      } else {
+        verdicts.push(`B: falhou (code=${b.selectError?.code ?? "n/a"}) — ${b.selectError?.message ?? ""}`);
+      }
+      if (c.ok) {
+        verdicts.push("C: insert+select.single() OK → caminho de produção funcionaria.");
+      } else if (c.phase === "post_insert_select") {
+        verdicts.push("C: RETURNING_ERROR (PGRST116) → INSERT passou, .single() não recebeu linha. Confirma SELECT bloqueando o returning.");
+      } else if (c.phase === "insert_with_check") {
+        verdicts.push("C: INSERT_ERROR (42501/RLS) → o próprio INSERT foi rejeitado, não o SELECT.");
+      } else {
+        verdicts.push(`C: erro desconhecido (code=${c.error?.code ?? "n/a"}).`);
+      }
+
+      const summary = {
+        runId,
+        A: { ok: a.ok, status: a.status, insertData: a.insertData, insertError: a.insertError },
+        B: { ok: b.ok, status: b.status, rowsReturned: b.rowsReturned, data: b.data, selectError: b.selectError },
+        C: { ok: c.ok, status: c.status, phase: c.phase, data: c.data, error: c.error },
+        comparison: {
+          insertSucceeded_A: a.ok,
+          insertSucceeded_B: b.ok,
+          insertSucceeded_C: c.ok,
+          selectReturnedRows_B: b.rowsReturned,
+          selectErrorCode_B: b.selectError?.code ?? null,
+          returningErrorCode_C: c.error?.code ?? null,
+        },
+        verdicts,
+      };
+
+      emitPdaDebug({ step: "AUDIT_ALL_SUMMARY", ...summary });
+      console.table([
+        { test: "A insert-only", ok: a.ok, status: a.status, errCode: a.insertError?.code ?? "" },
+        { test: "B insert+select(id)", ok: b.ok, status: b.status, rows: b.rowsReturned ?? 0, errCode: b.selectError?.code ?? "" },
+        { test: "C insert+select.single()", ok: c.ok, status: c.status, phase: c.phase, errCode: c.error?.code ?? "" },
+      ]);
+      console.log("[PDA AUDIT ALL — VERDICTS]", verdicts);
+
+      throw new Error(`[AUDIT ALL ${runId}] A=${a.ok ? "ok" : "fail"} • B=${b.ok ? `ok(${b.rowsReturned ?? 0}r)` : "fail"} • C=${c.ok ? "ok" : c.phase}. Veja AUDIT_ALL_SUMMARY no painel de debug.`);
     }
 
     // === TRILHA 2 — TESTE C (default "off" também): insert.select('*').single() com discriminação INSERT vs RETURNING ===
