@@ -18,9 +18,10 @@ const inScope = <T extends { club_id: string; team_id?: string }>(s: Scope) => (
   return true;
 };
 
-// === PDA AUDITORIA — flag local. Trocar para "A" | "B" | "C" e submeter o form.
+// === PDA AUDITORIA — flag local. Trocar para "A" | "B" | "C" | "ALL" e submeter o form.
+// "ALL" = executa A, B e C automaticamente na mesma submissão e emite um resumo comparativo.
 // "off" = comportamento de produção (insert + select.single com discriminação INSERT vs RETURNING).
-const PDA_AUDIT_MODE = "C" as "off" | "A" | "B" | "C";
+const PDA_AUDIT_MODE = "ALL" as "off" | "A" | "B" | "C" | "ALL";
 
 /* ===================== CLUBS ===================== */
 export const clubsService = {
