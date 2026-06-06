@@ -71,6 +71,8 @@ function nextPdaSeq() {
 }
 
 export function emitPdaDebug(detail: DebugDetail) {
+  if (!import.meta.env.DEV) return;
+
   const event = {
     seq: nextPdaSeq(),
     at: new Date().toISOString(),
