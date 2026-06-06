@@ -84,8 +84,8 @@ export const clubsService = {
       insertPayload,
     };
 
-    emitPdaDebug({ step: "INSERT_PAYLOAD", payload: insertPayload, diag });
-    console.log("INSERT_PAYLOAD", insertPayload);
+    emitPdaDebug({ step: "INSERT_PAYLOAD", payload: insertPayload, diag, audit_mode: PDA_AUDIT_MODE });
+    console.log("INSERT_PAYLOAD", insertPayload, "AUDIT_MODE", PDA_AUDIT_MODE);
 
     if (userRes.error || !authUser) {
       emitPdaDebug({
@@ -96,8 +96,68 @@ export const clubsService = {
       throw new Error("Sessão expirada. Faça login novamente. (getUser falhou)");
     }
 
-    emitPdaDebug({ step: "SELECT_CLUB_START", query: "supabase.from('clubs').insert(...).select('*').single()" });
-    const { data, error } = await supabase
+    // === TRILHA 1 — Probe de role/JWT que o PostgREST está vendo AGORA ===
+    try {
+      const tok = sessionRes.data.session?.access_token ?? "";
+      const tokenPreview = tok ? `${tok.slice(0, 12)}…${tok.slice(-6)} (len=${tok.length})` : null;
+      const expiresAt = sessionRes.data.session?.expires_at ?? null;
+      const expiresInSec = expiresAt ? expiresAt - Math.floor(Date.now() / 1000) : null;
+
+      const whoami = await supabase.rpc("pda_audit_whoami");
+      emitPdaDebug({
+        step: "WHOAMI_BEFORE_INSERT",
+        rpc: "public.pda_audit_whoami()",
+        data: whoami.data,
+        error: serializeSupabaseError(whoami.error),
+        client_session: {
+          tokenPreview,
+          expiresAt,
+          expiresInSec,
+          expectedUserId: authUser.id,
+        },
+      });
+    } catch (e) {
+      emitPdaDebug({ step: "WHOAMI_BEFORE_INSERT_THREW", error: serializeSupabaseError(e) });
+    }
+
+    // === TRILHA 2 — TESTE A: insert sem returning ===
+    if (PDA_AUDIT_MODE === "A") {
+      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-A]` };
+      emitPdaDebug({ step: "TEST_A_INSERT_ONLY_START", payload: auditPayload, query: "supabase.from('clubs').insert(payload) // no select" });
+      const res = await supabase.from("clubs").insert(auditPayload);
+      emitPdaDebug({
+        step: "TEST_A_INSERT_ONLY_RESULT",
+        insertData: res.data ?? null,
+        insertError: serializeSupabaseError(res.error),
+        status: res.status,
+        statusText: res.statusText,
+      });
+      if (res.error) throw new Error(`[TESTE A] ${res.error.message}`);
+      throw new Error("[TESTE A] INSERT-only ok. Veja painel de debug. Troque PDA_AUDIT_MODE para 'B' ou 'C'.");
+    }
+
+    // === TRILHA 2 — TESTE B: insert + select('id') sem .single() ===
+    if (PDA_AUDIT_MODE === "B") {
+      const auditPayload = { ...insertPayload, name: `${insertPayload.name} [PDA-AUDIT-B]` };
+      emitPdaDebug({ step: "TEST_B_INSERT_SELECT_ID_START", payload: auditPayload, query: "supabase.from('clubs').insert(payload).select('id')" });
+      const res = await supabase.from("clubs").insert(auditPayload).select("id");
+      emitPdaDebug({
+        step: "TEST_B_INSERT_SELECT_ID_RESULT",
+        data: res.data ?? null,
+        error: serializeSupabaseError(res.error),
+        status: res.status,
+        statusText: res.statusText,
+        rowsReturned: Array.isArray(res.data) ? res.data.length : null,
+      });
+      if (res.error) throw new Error(`[TESTE B] ${res.error.message}`);
+      const row = (res.data ?? [])[0];
+      if (!row) throw new Error("[TESTE B] INSERT ok mas select('id') retornou 0 linhas — RLS de SELECT bloqueando.");
+      throw new Error("[TESTE B] INSERT+select(id) ok. Veja painel de debug. Troque PDA_AUDIT_MODE para 'C' ou 'off'.");
+    }
+
+    // === TRILHA 2 — TESTE C (default "off" também): insert.select('*').single() com discriminação INSERT vs RETURNING ===
+    emitPdaDebug({ step: "TEST_C_INSERT_RETURNING_START", query: "supabase.from('clubs').insert(...).select('*').single()" });
+    const { data, error, status, statusText } = await supabase
       .from("clubs")
       .insert(insertPayload)
       .select("*")
@@ -108,14 +168,31 @@ export const clubsService = {
 
     if (error) {
       const serializedError = serializeSupabaseError(error);
-      emitPdaDebug({ step: "INSERT_CLUB_ERROR", query: "insert into public.clubs returning representation", payload: insertPayload, error: serializedError, diag });
-      emitPdaDebug({ step: "SELECT_CLUB_ERROR", query: "implicit select from returning representation on clubs", error: serializedError });
+      const msg = (error.message ?? "").toLowerCase();
+      const code = (error as { code?: string | null }).code ?? null;
+
+      // PGRST116 = "JSON object requested, multiple (or no) rows returned"
+      // 42501 / "violates row-level security" = INSERT WITH CHECK rejeitado pelo Postgres
+      const isReturning = code === "PGRST116";
+      const isInsertRls = code === "42501" || msg.includes("violates row-level security");
+
+      emitPdaDebug({
+        step: isReturning ? "RETURNING_ERROR" : isInsertRls ? "INSERT_ERROR" : "INSERT_OR_RETURNING_UNKNOWN_ERROR",
+        phase: isReturning ? "post_insert_select" : isInsertRls ? "insert_with_check" : "unknown",
+        query: "insert into public.clubs returning representation",
+        payload: insertPayload,
+        error: serializedError,
+        status,
+        statusText,
+        diag,
+      });
       throw new Error(error.message);
     }
 
     emitPdaDebug({ step: "INSERT_CLUB_SUCCESS", result: data, diag });
     emitPdaDebug({ step: "SELECT_CLUB_SUCCESS", result: data, query: "implicit select from returning representation on clubs" });
     return mapClubRow(data);
+
   },
   async update(id: string, patch: Partial<Club>): Promise<void> {
     const { error } = await supabase
