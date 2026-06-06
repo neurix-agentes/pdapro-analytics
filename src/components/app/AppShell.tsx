@@ -11,6 +11,7 @@ import { TeamSwitcher } from "@/components/app/TeamSwitcher";
 import { NotificationsPopover } from "@/components/app/NotificationsPopover";
 import { Breadcrumbs } from "@/components/app/Breadcrumbs";
 import { SeasonSwitcher } from "@/components/app/SeasonSwitcher";
+import { SecurityPostureBanner } from "@/components/app/SecurityPostureBanner";
 import { useSidebarStore } from "@/store";
 import { useSession, signOut } from "@/hooks/useAuth";
 import { useMyClubIds } from "@/hooks/queries";
