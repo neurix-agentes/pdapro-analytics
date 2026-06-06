@@ -1,86 +1,79 @@
+# Diagnóstico definitivo (com base nos dados reais do banco)
 
-# Plano de auditoria — INSERT em `public.clubs`
+Consultei `public.clubs`, `public.club_members` e `pg_policy`. O cenário é:
 
-## Por que esse plano
+- A policy de INSERT em `clubs` é literalmente `WITH CHECK true` — ou seja, **o INSERT em si nunca é o problema**.
+- A tabela contém **9 clubes criados por este usuário**, **todos com o sufixo `[PDA-AUDIT-A-…]`** (6 deles da auditoria de hoje). **Nenhum clube `B-` ou `C-` foi gravado.**
+- Para cada clube criado pelo teste A, existe a membership `owner` correspondente em `club_members` (o trigger `tg_club_add_owner` funciona).
 
-O erro real é `new row violates row-level security policy for table "clubs"`. Essa mensagem é gerada pelo Postgres no momento do `INSERT` (avaliação de `WITH CHECK`), **nunca** num `SELECT` pós-insert. Logo:
+O que isso significa, cruzando com o `AUDIT_ALL_SUMMARY`:
 
-- A hipótese "INSERT passa e SELECT pós-insert falha" **não bate com a mensagem**. Se fosse o SELECT, o erro seria `JSON object requested, multiple (or no) rows returned` (do `.single()`) ou um retorno `data: null` sem erro.
-- A policy `clubs auth insert` é `WITH CHECK (true)` e restrita ao role `{authenticated}`. A única forma de essa policy reprovar um INSERT é a requisição estar chegando como role **`anon`** (JWT ausente/expirado no momento exato do INSERT) ou estar sendo avaliada uma policy diferente da listada.
+- **Teste A (`.insert()` sem `.select()`)** → PostgREST envia `Prefer: return=minimal`. INSERT roda, `AFTER` trigger insere a membership, transação commita. ✅ Linha gravada.
+- **Testes B/C (`.insert().select(...)`)** → PostgREST envia `Prefer: return=representation` e monta `WITH ins AS (INSERT … RETURNING *) SELECT * FROM ins`. Esse outer SELECT é avaliado **contra a policy SELECT de `clubs`** (`is_club_member(auth.uid(), id)`). Mas o `AFTER INSERT` que cria a membership só executa **depois** do RETURNING — então no momento da avaliação a membership **ainda não existe**, o SELECT policy reprova a linha recém-inserida, a transação faz ROLLBACK, e PostgREST devolve `42501 "new row violates row-level security policy for table clubs"`. ❌ Nada é gravado.
 
-Vou executar **as duas trilhas em paralelo** numa só rodada de diagnóstico, sem corrigir nada ainda.
+Por isso o banco só tem clubes "A". E por isso o `.select("*").single()` do código real (que é o caminho `C`) sempre falha.
 
----
+A escolha "Apenas 1 clube por usuário no onboarding" não corrige isso sozinha — mesmo o **primeiro** clube falha. Precisamos das duas coisas: corrigir o RLS e aplicar a regra de negócio no onboarding.
 
-## Trilha 1 — Probe de role/JWT no momento do INSERT
+# O plano
 
-Objetivo: provar se o PostgREST está vendo `authenticated` ou `anon` no exato momento da chamada que falha.
+## 1. Corrigir a SELECT policy de `clubs` (migration)
 
-Ações (sem alterar policies):
+Atualizar `clubs members read` para também permitir que o autor enxergue a linha:
 
-1. Criar uma RPC `pda_audit_whoami()` (SECURITY INVOKER, não-DEFINER) que retorna `auth.uid()`, `auth.role()`, `current_user`, `current_setting('request.jwt.claims', true)`.
-   - Não-DEFINER é essencial: precisamos do role que o PostgREST está aplicando à request, não o role do owner da função.
-2. Em `clubsService.create`, imediatamente antes do `.insert(...)`, chamar `supabase.rpc('pda_audit_whoami')` e logar em `emitPdaDebug` como `step: "WHOAMI_BEFORE_INSERT"`.
-3. Logar também `supabase.auth.getSession()` → `access_token` (apenas tamanho/primeiros chars, não o token completo) e `expires_at`, para detectar token expirado.
-4. Inspecionar o request real no Network: confirmar se o header `Authorization: Bearer ...` está presente na chamada POST `/rest/v1/clubs`.
+```sql
+DROP POLICY "clubs members read" ON public.clubs;
+CREATE POLICY "clubs members read"
+ON public.clubs FOR SELECT TO authenticated
+USING (is_club_member(auth.uid(), id) OR created_by = auth.uid());
+```
 
-Resultado esperado:
-- Se `WHOAMI_BEFORE_INSERT.auth_role === "anon"` → confirmado: cliente Supabase está sem JWT nessa chamada. Causa raiz fora da policy.
-- Se `auth_role === "authenticated"` e o INSERT mesmo assim falha → existe outra policy/constraint reprovando (precisa investigar `pg_policies` para INSERT em runtime).
+Efeito: o RETURNING do INSERT passa imediatamente (porque `created_by = auth.uid()` é satisfeito na própria linha inserida), o `AFTER` trigger roda em seguida criando a membership, e o `.select("*").single()` retorna o clube. Membership de outros usuários continua sendo a única forma de ler clubes alheios.
 
----
+## 2. Regra "1 clube por usuário no onboarding"
 
-## Trilha 2 — TESTE A / B / C (insert sem returning)
+Em `src/routes/onboarding.tsx`:
 
-Objetivo solicitado pelo usuário: separar erro de INSERT vs erro de SELECT pós-insert.
+- Se `myClubs.data` já tiver pelo menos 1 clube, redirecionar para `/dashboard` (e setar `currentClub` no Zustand) em vez de mostrar a escolha "Criar clube / Usar convite".
+- Esconder/desabilitar o card "Criar um novo clube" quando o usuário já é membro de algum clube; ainda assim permitir "Usar convite" caso queira entrar em mais um clube via redeem (que é o caminho legítimo para multi-clube).
+- O fluxo de **criar clube** fica restrito a usuários sem nenhuma membership.
 
-Em `src/services/index.ts > clubsService.create`, atrás de uma flag `PDA_AUDIT_MODE` (constante local no topo do arquivo, valor `"A" | "B" | "C" | "off"`) executar:
+Não vamos impor o limite no banco — multi-clube continua possível via convite (que já é o caso hoje para owner/admin convidando coaches).
 
-- **TESTE A** — `await supabase.from("clubs").insert(insertPayload)` (sem `.select`). Logar:
-  - `step: "TEST_A_INSERT_ONLY"`, `insertData`, `insertError` serializado.
-- **TESTE B** — `await supabase.from("clubs").insert(insertPayload).select("id")` (sem `.single()`). Logar:
-  - `step: "TEST_B_INSERT_SELECT_ID"`, `data`, `error`.
-- **TESTE C** — manter `.insert().select("*").single()` mas envolver em dois `try/catch` lógicos (na verdade: detectar se o `error.code` é do PostgREST de "0 rows" vs erro de RLS no insert) e emitir dois eventos distintos:
-  - `step: "INSERT_ERROR"` quando `error.message` contém `violates row-level security` ou código `42501`.
-  - `step: "RETURNING_ERROR"` quando `error.code === "PGRST116"` (`JSON object requested, multiple (or no) rows returned`) — esse é o sintoma real de "SELECT pós-insert bloqueado pela policy de leitura".
+## 3. Remover toda a instrumentação de auditoria (back to clean)
 
-Os três rodam na mesma submissão do formulário, sequencialmente, todos com payload diferente em `name` (`PDA-AUDIT-A`, `PDA-AUDIT-B`, `PDA-AUDIT-C`) para não colidir. Em caso de TESTE A/B criarem linhas órfãs, anotar os ids no log para limpeza posterior por migration.
+Arquivos a limpar:
 
----
+- `src/services/index.ts`: remover `PDA_AUDIT_MODE`, `runTestA/B/C`, `inScope`, todo o bloco `AUDIT_ALL`, chamadas a `pda_audit_whoami` e a `emitPdaDebug` dentro do `clubsService.create`. Voltar para um único `.insert(payload).select("*").single()` enxuto.
+- `src/routes/onboarding.tsx`: remover `DebugPanel`, o `useEffect` de `fetch.intercept`, o `useEffect` listener de `pda:debug`, os `console.log` de auth e os `emitPdaDebug` espalhados pelo `submitClub`.
+- `src/hooks/mutations.ts`: remover quaisquer `emitPdaDebug` (`MUTATION_CREATE_CLUB_*`).
+- `src/lib/pda-debug.ts`: deletar (não terá mais usuários).
+- Migration: `DROP FUNCTION public.pda_audit_whoami();` e também `DROP FUNCTION public.debug_whoami();` (esta última é apontada como "não removida" pelo `security_posture_check`, então aproveita o passe).
 
-## Interpretação cruzada dos resultados
+## 4. Limpar os 6 clubes de auditoria do banco
 
-| Trilha 1 (`auth_role`) | TESTE A (`insert`) | TESTE B (`insert+select id`) | Conclusão |
-|---|---|---|---|
-| `anon` | falha com `violates RLS` | falha igual | **Causa: JWT não está sendo anexado** ao request — problema no client/auth, não em policy. Próximo passo: investigar por que `supabase-js` envia anon nessa chamada (provavelmente sessão perdida ou client diferente). |
-| `authenticated` | falha com `violates RLS` | falha igual | Existe outra policy/constraint INSERT além da listada, ou a policy real em runtime difere do schema reportado. Próximo passo: `SELECT * FROM pg_policies WHERE tablename='clubs'` em runtime. |
-| `authenticated` | sucesso | sucesso | INSERT está OK. O `.single()` original quebra **apenas no retorno**. Causa: trigger de membership corre, mas a policy SELECT `is_club_member` ainda não enxerga a linha no mesmo round-trip. Aí sim a hipótese do usuário se confirma. |
-| `authenticated` | sucesso | falha com `PGRST116` | Confirma policy SELECT bloqueando o returning. |
+Deletar via tool `insert` os 6 clubes `[PDA-AUDIT-A-*]` criados hoje (`KRWA`, `T9VT`, `JLJO`, `DTUO`, `NRTS`, `QPVK`) e suas memberships. Manter `TESTE SQL`, `TESTE` e `PROBE_RLS` (clubes antigos, fora do escopo).
 
-Só depois desse cruzamento eu proponho a correção (que será uma de três coisas bem distintas dependendo do quadrante).
+## 5. Verificação manual após aplicar
 
----
+1. Abrir `/onboarding` com usuário **novo** (sem nenhum clube) → criar clube → deve cair em `/onboarding` step "team" sem erro e o clube fica gravado.
+2. Voltar para `/onboarding` com usuário que **já é membro** → deve ser redirecionado para `/dashboard` automaticamente.
+3. Confirmar via `SELECT` que a linha do novo clube existe e que o usuário tem `role='owner'` em `club_members`.
 
-## Entregáveis desta rodada
+# Detalhes técnicos (referência)
 
-1. Migration: criar RPC `public.pda_audit_whoami()` (não-DEFINER, retorna `jsonb`).
-2. Edição em `src/services/index.ts`:
-   - Adicionar constante `PDA_AUDIT_MODE`.
-   - Adicionar `WHOAMI_BEFORE_INSERT` antes do insert.
-   - Adicionar branches dos TESTES A/B/C atrás da flag.
-   - Adicionar discriminação `INSERT_ERROR` vs `RETURNING_ERROR` pelo `error.code`.
-3. Sem alteração em policies, sem alteração em mutations.ts, sem alteração na UI.
+```text
+Antes (falha):
+  client → INSERT clubs RETURNING * (Prefer: return=representation)
+         → outer SELECT * roda RLS clubs.SELECT (is_club_member)
+         → membership ainda não existe → 42501 → ROLLBACK
 
-## Como rodar
+Depois (ok):
+  client → INSERT clubs RETURNING *
+         → outer SELECT * roda RLS clubs.SELECT
+            (is_club_member OR created_by = auth.uid())
+         → created_by = auth.uid() ✓ → linha passa
+         → AFTER trigger cria membership → COMMIT → linha retornada
+```
 
-Após aplicar:
-1. Setar `PDA_AUDIT_MODE = "A"`, submeter o form de onboarding, copiar o painel de debug.
-2. Trocar para `"B"`, submeter de novo.
-3. Trocar para `"C"`, submeter de novo.
-4. Colar os três logs aqui. Aí eu apresento o diagnóstico final e a correção recomendada (ainda sem aplicar, como combinado).
-
-## Notas técnicas
-
-- A RPC `pda_audit_whoami` é diferente da `debug_whoami` antiga (que foi marcada para remoção): aquela era SECURITY DEFINER (mascara o role real); esta é INVOKER (essencial para o teste).
-- Nenhum dos testes mexe em `club_members`, então o trigger `tg_club_add_owner` continua se comportando como em produção.
-- Os logs já vão para `window.__pdaAuditLog` (debug panel existente). Nada novo de UI.
+Nenhuma mudança em policies de `club_members`, `teams`, `athletes` etc. — o problema é estritamente da combinação `RETURNING + SELECT policy + AFTER trigger` em `clubs`.
