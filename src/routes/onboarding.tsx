@@ -44,16 +44,18 @@ function OnboardingPage() {
   // Invite
   const [code, setCode] = useState(invite ?? "");
 
-  // === DEBUG ===
+  // === DEBUG (DEV-only) ===
   const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const h = (e: Event) => setDebug((e as CustomEvent).detail);
     window.addEventListener("pda:debug", h);
     return () => window.removeEventListener("pda:debug", h);
   }, []);
 
-  // Intercept fetch to capture REAL headers sent to PostgREST /rest/v1/clubs
+  // Intercept fetch to capture REAL headers sent to PostgREST /rest/v1/clubs (DEV-only)
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const w = window as unknown as { __pdaFetchPatched?: boolean };
     if (w.__pdaFetchPatched) return;
     w.__pdaFetchPatched = true;
@@ -92,6 +94,7 @@ function OnboardingPage() {
       return orig(input, init);
     };
   }, []);
+
 
   useEffect(() => {
     console.log("[PDA DEBUG] onboarding auth state", {
