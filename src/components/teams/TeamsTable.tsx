@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { MoreHorizontal, Pencil, Archive, ArrowUpRight, ShieldCheck } from "lucide-react";
+import { MoreHorizontal, Pencil, Archive, ArrowUpRight, ShieldCheck, Trash2 } from "lucide-react";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import type { Team, Club, Coach } from "@/types";
 
@@ -12,9 +12,10 @@ interface Props {
   coaches: Coach[];
   onEdit: (t: Team) => void;
   onArchive: (t: Team) => void;
+  onDelete: (t: Team) => void;
 }
 
-export function TeamsTable({ teams, clubs, coaches, onEdit, onArchive }: Props) {
+export function TeamsTable({ teams, clubs, coaches, onEdit, onArchive, onDelete }: Props) {
   if (!teams.length) {
     return (
       <div className="glass rounded-2xl py-16 text-center">
