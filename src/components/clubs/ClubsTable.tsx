@@ -14,7 +14,7 @@ interface Props {
   onDelete: (c: Club) => void;
 }
 
-export function ClubsTable({ clubs, teams, onEdit, onArchive }: Props) {
+export function ClubsTable({ clubs, teams, onEdit, onArchive, onDelete }: Props) {
   if (!clubs.length) {
     return (
       <div className="glass rounded-2xl py-16 text-center">
