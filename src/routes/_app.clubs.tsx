@@ -89,10 +89,37 @@ function ClubsPage() {
             onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
           });
         }}
-
+        onDelete={(c) => setToDelete(c)}
       />
 
       <ClubFormDialog open={open} onOpenChange={setOpen} club={editing} />
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir clube “{toDelete?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. Todos os times, treinadores, atletas, sessões e relatórios deste clube serão removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-danger text-white hover:bg-danger/90"
+              onClick={() => {
+                if (!toDelete) return;
+                const c = toDelete;
+                deleteM.mutate(c.id, {
+                  onSuccess: () => { toast.success("Clube excluído."); setToDelete(null); },
+                  onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir."),
+                });
+              }}
+            >
+              Excluir definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
