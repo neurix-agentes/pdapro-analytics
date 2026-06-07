@@ -22,10 +22,12 @@ function ClubsPage() {
   const { data: clubs = [] } = useClubs();
   const { data: teams = [] } = useAllTeams();
   const archiveM = useArchiveClub();
+  const deleteM = useDeleteClub();
   const [q, setQ] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Club | null>(null);
+  const [toDelete, setToDelete] = useState<Club | null>(null);
 
   const list = useMemo(
     () =>
