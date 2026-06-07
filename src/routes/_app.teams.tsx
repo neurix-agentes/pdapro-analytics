@@ -25,11 +25,13 @@ function TeamsPage() {
   const { data: clubs = [] } = useClubs();
   const { data: coaches = [] } = useCoaches();
   const archiveM = useArchiveTeam();
+  const deleteM = useDeleteTeam();
   const currentClub = useClubStore((s) => s.currentClubId);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Team | null>(null);
+  const [toDelete, setToDelete] = useState<Team | null>(null);
 
   const categories = useMemo(
     () => Array.from(new Set(teams.map((t) => t.category as string))),
