@@ -5,9 +5,13 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { ClubsTable } from "@/components/clubs/ClubsTable";
 import { ClubFormDialog } from "@/components/clubs/ClubFormDialog";
 import { useClubs, useAllTeams } from "@/hooks/queries";
-import { useArchiveClub } from "@/hooks/mutations";
+import { useArchiveClub, useDeleteClub } from "@/hooks/mutations";
 import type { Club } from "@/types";
 import { toast } from "sonner";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_app/clubs")({
   head: () => ({ meta: [{ title: "Clubes · PDA Sport" }] }),
