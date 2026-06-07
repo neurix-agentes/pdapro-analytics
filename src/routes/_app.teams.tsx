@@ -95,10 +95,36 @@ function TeamsPage() {
             onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
           });
         }}
-
+        onDelete={(t) => setToDelete(t)}
       />
 
       <TeamFormDialog open={open} onOpenChange={setOpen} team={editing} defaultClubId={currentClub ?? undefined} />
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir time “{toDelete?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. Atletas e sessões deste time serão desvinculados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-danger text-white hover:bg-danger/90"
+              onClick={() => {
+                if (!toDelete) return;
+                deleteM.mutate(toDelete.id, {
+                  onSuccess: () => { toast.success("Time excluído."); setToDelete(null); },
+                  onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir."),
+                });
+              }}
+            >
+              Excluir definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
