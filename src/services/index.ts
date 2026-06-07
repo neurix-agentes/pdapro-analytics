@@ -160,6 +160,14 @@ export const teamsService = {
     const { error } = await supabase.from("teams").update({ archived: !current }).eq("id", id);
     if (error) throw new Error(error.message);
   },
+  async remove(id: string): Promise<void> {
+    // Detach athletes / sessions / heatmaps / reports from team before delete
+    await supabase.from("athletes").update({ team_id: null }).eq("team_id", id);
+    await supabase.from("sessions").update({ team_id: null }).eq("team_id", id);
+    await supabase.from("reports").update({ team_id: null }).eq("team_id", id);
+    const { error } = await supabase.from("teams").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
 };
 
 function mapTeamRow(r: Record<string, unknown>): Team {
