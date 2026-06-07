@@ -6,7 +6,11 @@ import { TeamsTable } from "@/components/teams/TeamsTable";
 import { TeamFormDialog } from "@/components/teams/TeamFormDialog";
 import { useTeams, useClubs, useCoaches } from "@/hooks/queries";
 import { useClubStore } from "@/store";
-import { useArchiveTeam } from "@/hooks/mutations";
+import { useArchiveTeam, useDeleteTeam } from "@/hooks/mutations";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import type { Team } from "@/types";
 import { toast } from "sonner";
