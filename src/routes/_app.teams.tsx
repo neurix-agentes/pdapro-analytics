@@ -6,7 +6,11 @@ import { TeamsTable } from "@/components/teams/TeamsTable";
 import { TeamFormDialog } from "@/components/teams/TeamFormDialog";
 import { useTeams, useClubs, useCoaches } from "@/hooks/queries";
 import { useClubStore } from "@/store";
-import { useArchiveTeam } from "@/hooks/mutations";
+import { useArchiveTeam, useDeleteTeam } from "@/hooks/mutations";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import type { Team } from "@/types";
 import { toast } from "sonner";
@@ -21,11 +25,13 @@ function TeamsPage() {
   const { data: clubs = [] } = useClubs();
   const { data: coaches = [] } = useCoaches();
   const archiveM = useArchiveTeam();
+  const deleteM = useDeleteTeam();
   const currentClub = useClubStore((s) => s.currentClubId);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Team | null>(null);
+  const [toDelete, setToDelete] = useState<Team | null>(null);
 
   const categories = useMemo(
     () => Array.from(new Set(teams.map((t) => t.category as string))),
@@ -89,10 +95,36 @@ function TeamsPage() {
             onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
           });
         }}
-
+        onDelete={(t) => setToDelete(t)}
       />
 
       <TeamFormDialog open={open} onOpenChange={setOpen} team={editing} defaultClubId={currentClub ?? undefined} />
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir time “{toDelete?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. Atletas e sessões deste time serão desvinculados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-danger text-white hover:bg-danger/90"
+              onClick={() => {
+                if (!toDelete) return;
+                deleteM.mutate(toDelete.id, {
+                  onSuccess: () => { toast.success("Time excluído."); setToDelete(null); },
+                  onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir."),
+                });
+              }}
+            >
+              Excluir definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

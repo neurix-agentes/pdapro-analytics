@@ -54,6 +54,19 @@ export function useArchiveClub() {
   });
 }
 
+export function useDeleteClub() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clubsService.remove(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clubs"] });
+      qc.invalidateQueries({ queryKey: ["myClubIds"] });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+}
+
 export function useCreateTeam() {
   const qc = useQueryClient();
   return useMutation({
@@ -77,6 +90,14 @@ export function useArchiveTeam() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: { id: string; current: boolean }) => teamsService.toggleArchive(args.id, args.current),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => teamsService.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
   });
 }

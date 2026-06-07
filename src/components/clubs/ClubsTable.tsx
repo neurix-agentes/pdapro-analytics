@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { MoreHorizontal, Archive, Pencil, ArrowUpRight, Building2 } from "lucide-react";
+import { MoreHorizontal, Archive, Pencil, ArrowUpRight, Building2, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import type { Club, Team } from "@/types";
 
@@ -11,9 +11,10 @@ interface Props {
   teams: Team[];
   onEdit: (c: Club) => void;
   onArchive: (c: Club) => void;
+  onDelete: (c: Club) => void;
 }
 
-export function ClubsTable({ clubs, teams, onEdit, onArchive }: Props) {
+export function ClubsTable({ clubs, teams, onEdit, onArchive, onDelete }: Props) {
   if (!clubs.length) {
     return (
       <div className="glass rounded-2xl py-16 text-center">
@@ -112,6 +113,10 @@ export function ClubsTable({ clubs, teams, onEdit, onArchive }: Props) {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onArchive(c)} className="cursor-pointer">
                         <Archive className="h-3.5 w-3.5 mr-2" /> {c.archived ? "Reativar" : "Arquivar"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onDelete(c)} className="cursor-pointer text-danger focus:text-danger">
+                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

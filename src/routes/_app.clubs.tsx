@@ -5,9 +5,13 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { ClubsTable } from "@/components/clubs/ClubsTable";
 import { ClubFormDialog } from "@/components/clubs/ClubFormDialog";
 import { useClubs, useAllTeams } from "@/hooks/queries";
-import { useArchiveClub } from "@/hooks/mutations";
+import { useArchiveClub, useDeleteClub } from "@/hooks/mutations";
 import type { Club } from "@/types";
 import { toast } from "sonner";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_app/clubs")({
   head: () => ({ meta: [{ title: "Clubes · PDA Sport" }] }),
@@ -18,10 +22,12 @@ function ClubsPage() {
   const { data: clubs = [] } = useClubs();
   const { data: teams = [] } = useAllTeams();
   const archiveM = useArchiveClub();
+  const deleteM = useDeleteClub();
   const [q, setQ] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Club | null>(null);
+  const [toDelete, setToDelete] = useState<Club | null>(null);
 
   const list = useMemo(
     () =>
@@ -83,10 +89,37 @@ function ClubsPage() {
             onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao arquivar."),
           });
         }}
-
+        onDelete={(c) => setToDelete(c)}
       />
 
       <ClubFormDialog open={open} onOpenChange={setOpen} club={editing} />
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir clube “{toDelete?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível. Todos os times, treinadores, atletas, sessões e relatórios deste clube serão removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-danger text-white hover:bg-danger/90"
+              onClick={() => {
+                if (!toDelete) return;
+                const c = toDelete;
+                deleteM.mutate(c.id, {
+                  onSuccess: () => { toast.success("Clube excluído."); setToDelete(null); },
+                  onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir."),
+                });
+              }}
+            >
+              Excluir definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
