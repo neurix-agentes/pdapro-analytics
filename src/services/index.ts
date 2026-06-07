@@ -82,6 +82,16 @@ export const clubsService = {
     const { error } = await supabase.from("clubs").update({ archived: !current }).eq("id", id);
     if (error) throw new Error(error.message);
   },
+  async remove(id: string): Promise<void> {
+    // Cascade delete children (RLS via club membership)
+    const tables = ["heatmaps", "reports", "sessions", "athletes", "fields", "teams", "coaches", "club_invites", "club_members"] as const;
+    for (const t of tables) {
+      const { error } = await supabase.from(t).delete().eq("club_id", id);
+      if (error) throw new Error(`${t}: ${error.message}`);
+    }
+    const { error } = await supabase.from("clubs").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
 };
 
 function mapClubRow(r: Record<string, unknown>): Club {
