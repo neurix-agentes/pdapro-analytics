@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { MoreHorizontal, Archive, Pencil, ArrowUpRight, Building2 } from "lucide-react";
+import { MoreHorizontal, Archive, Pencil, ArrowUpRight, Building2, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import type { Club, Team } from "@/types";
 
@@ -11,6 +11,7 @@ interface Props {
   teams: Team[];
   onEdit: (c: Club) => void;
   onArchive: (c: Club) => void;
+  onDelete: (c: Club) => void;
 }
 
 export function ClubsTable({ clubs, teams, onEdit, onArchive }: Props) {
