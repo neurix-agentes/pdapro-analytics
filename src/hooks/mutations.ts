@@ -94,6 +94,14 @@ export function useArchiveTeam() {
   });
 }
 
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => teamsService.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
 export function useCreateCoach() {
   const qc = useQueryClient();
   return useMutation({
