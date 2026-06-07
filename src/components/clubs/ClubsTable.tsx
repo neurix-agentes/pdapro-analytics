@@ -114,6 +114,10 @@ export function ClubsTable({ clubs, teams, onEdit, onArchive, onDelete }: Props)
                       <DropdownMenuItem onClick={() => onArchive(c)} className="cursor-pointer">
                         <Archive className="h-3.5 w-3.5 mr-2" /> {c.archived ? "Reativar" : "Arquivar"}
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onDelete(c)} className="cursor-pointer text-danger focus:text-danger">
+                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>
