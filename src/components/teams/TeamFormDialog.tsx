@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useClubStore, useSeasonStore } from "@/store";
-import { useClubs, useCoaches } from "@/hooks/queries";
+import { useClubs, useClubStaff } from "@/hooks/queries";
 import { useCreateTeam, useUpdateTeam } from "@/hooks/mutations";
 import { toast } from "sonner";
 
