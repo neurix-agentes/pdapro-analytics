@@ -214,6 +214,16 @@ export const coachesService = {
 export type ClubRole =
   | "owner" | "admin" | "coach" | "assistant_coach" | "analyst" | "athlete" | "member";
 
+export interface ClubMemberWithProfile {
+  id: string;
+  user_id: string;
+  role: ClubRole;
+  created_at: string;
+  name: string;
+  email: string | null;
+  avatar_url: string | null;
+}
+
 export const membershipService = {
   async myClubIds(): Promise<string[]> {
     const { data, error } = await supabase.from("club_members").select("club_id");
@@ -225,15 +235,54 @@ export const membershipService = {
     if (error) throw new Error(error.message);
     return (data ?? []) as { club_id: string; role: ClubRole }[];
   },
-  async listClubMembers(clubId: string) {
+  async listClubMembers(clubId: string): Promise<ClubMemberWithProfile[]> {
+    const { data, error } = await supabase.rpc("list_club_members_with_profiles", { _club_id: clubId });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ClubMemberWithProfile[];
+  },
+  async updateMemberRole(memberId: string, role: ClubRole): Promise<void> {
+    const { error } = await supabase.from("club_members").update({ role }).eq("id", memberId);
+    if (error) throw new Error(error.message);
+  },
+  async removeMember(memberId: string): Promise<void> {
+    const { error } = await supabase.from("club_members").delete().eq("id", memberId);
+    if (error) throw new Error(error.message);
+  },
+  async transferOwnership(clubId: string, newOwnerUserId: string): Promise<void> {
+    const { error } = await supabase.rpc("transfer_club_ownership", {
+      _club_id: clubId,
+      _new_owner_user_id: newOwnerUserId,
+    });
+    if (error) throw new Error(error.message);
+  },
+  async myMembershipId(clubId: string): Promise<string | null> {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return null;
     const { data, error } = await supabase
       .from("club_members")
-      .select("id, user_id, role, created_at")
-      .eq("club_id", clubId);
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("user_id", u.user.id)
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return data?.id ?? null;
   },
 };
+
+export interface InvitePreview {
+  club_id: string;
+  club_name: string;
+  club_short_name: string | null;
+  club_logo_url: string | null;
+  role: ClubRole;
+  email: string | null;
+  expires_at: string;
+  uses: number;
+  max_uses: number;
+  revoked: boolean;
+  expired: boolean;
+  exhausted: boolean;
+}
 
 /* ===================== INVITES ===================== */
 export interface ClubInvite {
