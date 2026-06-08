@@ -1,6 +1,8 @@
 // PDA Sport — Mutations (Supabase)
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clubsService, teamsService, coachesService, invitesService, type ClubRole } from "@/services";
+import { clubsService, teamsService, coachesService, invitesService, membershipService, type ClubRole } from "@/services";
+import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
+import type { Club, Team, Coach } from "@/types";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import type { Club, Team, Coach } from "@/types";
 
