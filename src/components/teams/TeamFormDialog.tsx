@@ -132,9 +132,11 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
               <Select value={coachId || "__none__"} onValueChange={(v) => setCoachId(v === "__none__" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">— sem treinador —</SelectItem>
-                  {coaches.filter((c) => !clubId || c.club_id === clubId).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  <SelectItem value="__none__">— sem treinador definido —</SelectItem>
+                  {staff.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} <span className="text-muted-foreground">· {roleLabel(m.role)}</span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
