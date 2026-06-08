@@ -163,3 +163,12 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
     </Dialog>
   );
 }
+
+function roleLabel(role: string) {
+  return ({
+    owner: "Owner",
+    admin: "Admin",
+    coach: "Treinador",
+    assistant_coach: "Assistente",
+  } as Record<string, string>)[role] ?? role;
+}
