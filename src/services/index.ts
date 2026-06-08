@@ -357,6 +357,12 @@ export const invitesService = {
     if (error) throw new Error(translateInviteError(error.message));
     return data as string;
   },
+  async preview(code: string): Promise<InvitePreview | null> {
+    const { data, error } = await supabase.rpc("preview_club_invite", { _code: code.trim() });
+    if (error) throw new Error(error.message);
+    const row = Array.isArray(data) ? data[0] : data;
+    return (row as InvitePreview | undefined) ?? null;
+  },
 };
 
 function translateInviteError(msg: string) {
