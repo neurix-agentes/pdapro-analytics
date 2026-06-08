@@ -28,6 +28,7 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
   const currentSeason = useSeasonStore((s) => s.currentSeason);
   const seasons = useSeasonStore((s) => s.seasons);
   const { data: clubs = [] } = useClubs();
+  const { data: staff = [] } = useClubStaff(clubId || null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<string>("Sub-17");
