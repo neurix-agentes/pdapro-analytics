@@ -559,7 +559,7 @@ export type Database = {
             foreignKeyName: "teams_coach_id_fkey"
             columns: ["coach_id"]
             isOneToOne: false
-            referencedRelation: "coaches"
+            referencedRelation: "club_members"
             referencedColumns: ["id"]
           },
         ]
@@ -662,8 +662,41 @@ export type Database = {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
+      list_club_members_with_profiles: {
+        Args: { _club_id: string }
+        Returns: {
+          avatar_url: string
+          created_at: string
+          email: string
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["club_role"]
+          user_id: string
+        }[]
+      }
+      preview_club_invite: {
+        Args: { _code: string }
+        Returns: {
+          club_id: string
+          club_logo_url: string
+          club_name: string
+          club_short_name: string
+          email: string
+          exhausted: boolean
+          expired: boolean
+          expires_at: string
+          max_uses: number
+          revoked: boolean
+          role: Database["public"]["Enums"]["club_role"]
+          uses: number
+        }[]
+      }
       redeem_club_invite: { Args: { _code: string }; Returns: string }
       security_posture_check: { Args: never; Returns: Json }
+      transfer_club_ownership: {
+        Args: { _club_id: string; _new_owner_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "club_owner" | "coach" | "athlete"

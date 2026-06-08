@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useClubStore, useSeasonStore } from "@/store";
-import { useClubs, useCoaches } from "@/hooks/queries";
+import { useClubs, useClubStaff } from "@/hooks/queries";
 import { useCreateTeam, useUpdateTeam } from "@/hooks/mutations";
 import { toast } from "sonner";
 
@@ -28,7 +28,6 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
   const currentSeason = useSeasonStore((s) => s.currentSeason);
   const seasons = useSeasonStore((s) => s.seasons);
   const { data: clubs = [] } = useClubs();
-  const { data: coaches = [] } = useCoaches();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<string>("Sub-17");
@@ -37,6 +36,7 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
   const [coachId, setCoachId] = useState<string>("");
   const [season, setSeason] = useState<string>(currentSeason);
   const isCustom = category === "__custom__";
+  const { data: staff = [] } = useClubStaff(clubId || null);
 
   useEffect(() => {
     if (open) {
@@ -132,9 +132,11 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
               <Select value={coachId || "__none__"} onValueChange={(v) => setCoachId(v === "__none__" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">— sem treinador —</SelectItem>
-                  {coaches.filter((c) => !clubId || c.club_id === clubId).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  <SelectItem value="__none__">— sem treinador definido —</SelectItem>
+                  {staff.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} <span className="text-muted-foreground">· {roleLabel(m.role)}</span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -160,4 +162,13 @@ export function TeamFormDialog({ open, onOpenChange, team, defaultClubId }: Prop
       </DialogContent>
     </Dialog>
   );
+}
+
+function roleLabel(role: string) {
+  return ({
+    owner: "Owner",
+    admin: "Admin",
+    coach: "Treinador",
+    assistant_coach: "Assistente",
+  } as Record<string, string>)[role] ?? role;
 }

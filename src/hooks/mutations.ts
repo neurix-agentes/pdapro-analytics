@@ -1,6 +1,6 @@
 // PDA Sport — Mutations (Supabase)
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clubsService, teamsService, coachesService, invitesService, type ClubRole } from "@/services";
+import { clubsService, teamsService, coachesService, invitesService, membershipService, type ClubRole } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import type { Club, Team, Coach } from "@/types";
 
@@ -137,6 +137,42 @@ export function useRedeemInvite() {
       qc.invalidateQueries({ queryKey: ["myClubIds"] });
       qc.invalidateQueries({ queryKey: ["myMemberships"] });
       qc.invalidateQueries({ queryKey: ["clubs"] });
+    },
+  });
+}
+
+/* ============ MEMBERS ============ */
+
+export function useUpdateMemberRole(clubId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { memberId: string; role: ClubRole }) =>
+      membershipService.updateMemberRole(args.memberId, args.role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clubMembers", clubId] });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
+    },
+  });
+}
+
+export function useRemoveMember(clubId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) => membershipService.removeMember(memberId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clubMembers", clubId] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+}
+
+export function useTransferOwnership(clubId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (newOwnerUserId: string) => membershipService.transferOwnership(clubId, newOwnerUserId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clubMembers", clubId] });
+      qc.invalidateQueries({ queryKey: ["myMemberships"] });
     },
   });
 }

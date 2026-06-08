@@ -108,3 +108,13 @@ export const useClubMembers = (clubId: string | null | undefined) =>
     queryFn: () => (clubId ? membershipService.listClubMembers(clubId) : Promise.resolve([])),
     enabled: !!clubId,
   });
+
+/** Staff members eligible to be a team coach (owner/admin/coach/assistant_coach). */
+export const useClubStaff = (clubId: string | null | undefined) => {
+  const q = useClubMembers(clubId);
+  const staff = (q.data ?? []).filter((m) =>
+    ["owner", "admin", "coach", "assistant_coach"].includes(m.role),
+  );
+  return { ...q, data: staff };
+};
+
