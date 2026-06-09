@@ -387,10 +387,132 @@ function translateInviteError(msg: string) {
 /* =====================================================
    MOCKED (próximas fases) — athletes/sessions/heatmaps/reports/fields
    ===================================================== */
-export const athletesService = {
-  list: (s: Scope = {}): Promise<Athlete[]> => mockResponse(mockAthletes.filter(inScope(s))),
-  get: (id: string): Promise<Athlete | null> => mockResponse(mockAthletes.find((a) => a.id === id) ?? null),
+export type AthleteInput = {
+  club_id: string;
+  team_id: string;
+  name: string;
+  nickname?: string | null;
+  position: string;
+  secondary_position?: string | null;
+  dominant_foot?: "Direito" | "Esquerdo" | "Ambidestro" | null;
+  jersey_number?: number | null;
+  birth_date?: string | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  photo_url?: string | null;
+  status?: "active" | "inactive";
 };
+
+function calcAge(birth?: string | null): number {
+  if (!birth) return 0;
+  const d = new Date(birth);
+  if (isNaN(+d)) return 0;
+  const diff = Date.now() - d.getTime();
+  return Math.max(0, Math.floor(diff / (365.25 * 86400000)));
+}
+
+function mapAthleteRow(r: Record<string, unknown>): Athlete {
+  const birth = (r.birth_date as string | null) ?? null;
+  return {
+    id: r.id as string,
+    club_id: r.club_id as string,
+    team_id: (r.team_id as string | null) ?? null,
+    name: r.name as string,
+    nickname: (r.nickname as string | null) ?? null,
+    age: calcAge(birth),
+    birth_date: birth,
+    position: (r.position as string) ?? "",
+    secondary_position: (r.secondary_position as string | null) ?? null,
+    dominant_foot: (r.dominant_foot as Athlete["dominant_foot"]) ?? null,
+    jersey_number: (r.jersey_number as number | null) ?? 0,
+    photo_url: (r.photo_url as string | null) ?? undefined,
+    height_cm: (r.height_cm as number | null) ?? undefined,
+    weight_kg: (r.weight_kg as number | null) ?? undefined,
+    status: ((r.status as string) === "inactive" ? "inactive" : "active"),
+    active: (r.active as boolean | null) ?? true,
+    last_session_at: (r.last_session_at as string | null) ?? null,
+    last_report_at: (r.last_report_at as string | null) ?? null,
+    gps_enabled: (r.gps_enabled as boolean | null) ?? false,
+  };
+}
+
+export const athletesService = {
+  async list(s: Scope = {}): Promise<Athlete[]> {
+    let q = supabase.from("athletes").select("*").order("name");
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    if (s.teamId) q = q.eq("team_id", s.teamId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapAthleteRow);
+  },
+  async get(id: string): Promise<Athlete | null> {
+    const { data, error } = await supabase.from("athletes").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? mapAthleteRow(data) : null;
+  },
+  async create(payload: AthleteInput): Promise<Athlete> {
+    const { data, error } = await supabase
+      .from("athletes")
+      .insert({
+        club_id: payload.club_id,
+        team_id: payload.team_id,
+        name: payload.name.trim(),
+        nickname: payload.nickname?.trim() || null,
+        position: payload.position,
+        secondary_position: payload.secondary_position || null,
+        dominant_foot: payload.dominant_foot || null,
+        jersey_number: payload.jersey_number ?? null,
+        birth_date: payload.birth_date || null,
+        height_cm: payload.height_cm ?? null,
+        weight_kg: payload.weight_kg ?? null,
+        photo_url: payload.photo_url || null,
+        status: payload.status ?? "active",
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(translateAthleteError(error.message));
+    return mapAthleteRow(data);
+  },
+  async update(id: string, patch: Partial<AthleteInput>): Promise<void> {
+    const { error } = await supabase
+      .from("athletes")
+      .update({
+        team_id: patch.team_id,
+        name: patch.name?.trim(),
+        nickname: patch.nickname?.trim() || null,
+        position: patch.position,
+        secondary_position: patch.secondary_position || null,
+        dominant_foot: patch.dominant_foot || null,
+        jersey_number: patch.jersey_number ?? null,
+        birth_date: patch.birth_date || null,
+        height_cm: patch.height_cm ?? null,
+        weight_kg: patch.weight_kg ?? null,
+        photo_url: patch.photo_url ?? undefined,
+        status: patch.status,
+      })
+      .eq("id", id);
+    if (error) throw new Error(translateAthleteError(error.message));
+  },
+  async setStatus(id: string, status: "active" | "inactive"): Promise<void> {
+    const { error } = await supabase.from("athletes").update({ status }).eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("athletes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+};
+
+function translateAthleteError(msg: string): string {
+  if (msg.includes("uniq_athletes_team_jersey"))
+    return "Já existe um atleta com este número de camisa neste time.";
+  if (msg.includes("uniq_athletes_team_name"))
+    return "Já existe um atleta com este nome neste time.";
+  if (msg.includes("athletes_dominant_foot_check"))
+    return "Pé dominante inválido.";
+  return msg;
+}
+
 export const sessionsService = {
   list: (s: Scope = {}): Promise<PdaSession[]> => mockResponse(mockSessions.filter(inScope(s))),
   recent: (s: Scope = {}, n = 8): Promise<PdaSession[]> =>
