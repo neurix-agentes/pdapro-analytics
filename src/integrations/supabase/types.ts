@@ -18,14 +18,22 @@ export type Database = {
         Row: {
           active: boolean
           age: number | null
+          birth_date: string | null
           club_id: string
           created_at: string
+          dominant_foot: string | null
+          gps_enabled: boolean
           height_cm: number | null
           id: string
           jersey_number: number | null
+          last_report_at: string | null
+          last_session_at: string | null
           name: string
+          nickname: string | null
           photo_url: string | null
-          position: Database["public"]["Enums"]["position_enum"] | null
+          position: string | null
+          secondary_position: string | null
+          status: string
           team_id: string | null
           updated_at: string
           weight_kg: number | null
@@ -33,14 +41,22 @@ export type Database = {
         Insert: {
           active?: boolean
           age?: number | null
+          birth_date?: string | null
           club_id: string
           created_at?: string
+          dominant_foot?: string | null
+          gps_enabled?: boolean
           height_cm?: number | null
           id?: string
           jersey_number?: number | null
+          last_report_at?: string | null
+          last_session_at?: string | null
           name: string
+          nickname?: string | null
           photo_url?: string | null
-          position?: Database["public"]["Enums"]["position_enum"] | null
+          position?: string | null
+          secondary_position?: string | null
+          status?: string
           team_id?: string | null
           updated_at?: string
           weight_kg?: number | null
@@ -48,14 +64,22 @@ export type Database = {
         Update: {
           active?: boolean
           age?: number | null
+          birth_date?: string | null
           club_id?: string
           created_at?: string
+          dominant_foot?: string | null
+          gps_enabled?: boolean
           height_cm?: number | null
           id?: string
           jersey_number?: number | null
+          last_report_at?: string | null
+          last_session_at?: string | null
           name?: string
+          nickname?: string | null
           photo_url?: string | null
-          position?: Database["public"]["Enums"]["position_enum"] | null
+          position?: string | null
+          secondary_position?: string | null
+          status?: string
           team_id?: string | null
           updated_at?: string
           weight_kg?: number | null
