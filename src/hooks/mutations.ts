@@ -1,6 +1,6 @@
 // PDA Sport — Mutations (Supabase)
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clubsService, teamsService, coachesService, invitesService, membershipService, type ClubRole } from "@/services";
+import { clubsService, teamsService, coachesService, athletesService, invitesService, membershipService, type ClubRole, type AthleteInput } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import type { Club, Team, Coach } from "@/types";
 
@@ -174,5 +174,41 @@ export function useTransferOwnership(clubId: string) {
       qc.invalidateQueries({ queryKey: ["clubMembers", clubId] });
       qc.invalidateQueries({ queryKey: ["myMemberships"] });
     },
+  });
+}
+
+/* ============ ATHLETES ============ */
+
+export function useCreateAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AthleteInput) => athletesService.create(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useUpdateAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; patch: Partial<AthleteInput> }) =>
+      athletesService.update(args.id, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useSetAthleteStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; status: "active" | "inactive" }) =>
+      athletesService.setStatus(args.id, args.status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useDeleteAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => athletesService.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
   });
 }

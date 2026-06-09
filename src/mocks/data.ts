@@ -87,7 +87,7 @@ export const mockCoaches: Coach[] = [
   { id: "co_diego",  club_id: "c_juventude", name: "Diego Martins", email: "diego@juv.com" },
 ];
 
-const POSITIONS: Position[] = ["GK", "CB", "LB", "RB", "DM", "CM", "AM", "WING", "ST"];
+const POSITIONS: Position[] = ["Goleiro", "Zagueiro", "Lateral Direito", "Lateral Esquerdo", "Volante", "Meio Campo", "Meia Ofensivo", "Ponta Direita", "Atacante", "Centroavante"];
 const FIRST = ["Lucas", "Pedro", "Rafael", "João", "Gabriel", "Matheus", "Felipe", "Bruno", "Diego", "Vinicius", "Arthur", "Enzo", "Davi", "Murilo", "Caio", "Iago", "Yuri", "Théo", "Samuel", "Léo", "Otávio", "Tiago", "Vitor", "Nícolas"];
 const LAST = ["Vieira", "Almeida", "Souza", "Costa", "Oliveira", "Silva", "Lima", "Rocha", "Mendes", "Ferreira", "Gomes", "Cardoso", "Barbosa", "Ribeiro", "Pereira", "Martins", "Carvalho", "Nunes"];
 
@@ -106,6 +106,7 @@ export const mockAthletes: Athlete[] = mockTeams.flatMap((team) =>
       jersey_number: i + 1,
       height_cm: 165 + ((seed + i) % 25),
       weight_kg: 60 + ((seed + i) % 22),
+      status: "active" as const,
       active: true,
     } satisfies Athlete;
   }),
@@ -133,7 +134,7 @@ export const mockSessions: Session[] = mockAthletes.flatMap((a, idx) =>
     return {
       id: `s_${a.id}_${j}`,
       athlete_id: a.id,
-      team_id: a.team_id,
+      team_id: a.team_id ?? "",
       club_id: a.club_id,
       session_type: TYPES[seed % TYPES.length],
       status: STATUS[seed % STATUS.length],
@@ -162,7 +163,7 @@ export const mockHeatmaps: Heatmap[] = mockSessions
 export const mockReports: Report[] = mockAthletes.slice(0, 18).map((a, i) => ({
   id: `r_${a.id}`,
   athlete_id: a.id,
-  team_id: a.team_id,
+  team_id: a.team_id ?? "",
   club_id: a.club_id,
   title: `Relatório semanal — ${a.name}`,
   period: `Semana ${20 + (i % 6)}/2026`,
