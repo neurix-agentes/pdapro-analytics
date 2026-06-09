@@ -83,14 +83,23 @@ export const clubsService = {
     if (error) throw new Error(error.message);
   },
   async remove(id: string): Promise<void> {
-    // Cascade delete children (RLS via club membership)
-    const tables = ["heatmaps", "reports", "sessions", "athletes", "fields", "teams", "coaches", "club_invites", "club_members"] as const;
-    for (const t of tables) {
+    // IMPORTANT: delete child rows that depend on membership FIRST, then the club,
+    // and only remove club_members LAST. Deleting club_members earlier would strip
+    // the caller's owner role and silently void RLS on the clubs DELETE policy
+    // (is_club_owner), making the operation a no-op with no error.
+    const childTables = ["heatmaps", "reports", "sessions", "athletes", "fields", "teams", "coaches", "club_invites"] as const;
+    for (const t of childTables) {
       const { error } = await supabase.from(t).delete().eq("club_id", id);
       if (error) throw new Error(`${t}: ${error.message}`);
     }
-    const { error } = await supabase.from("clubs").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    const { error: clubErr, count } = await supabase
+      .from("clubs")
+      .delete({ count: "exact" })
+      .eq("id", id);
+    if (clubErr) throw new Error(clubErr.message);
+    if (count === 0) throw new Error("Sem permissão para excluir este clube.");
+    const { error: memErr } = await supabase.from("club_members").delete().eq("club_id", id);
+    if (memErr) throw new Error(`club_members: ${memErr.message}`);
   },
 };
 
