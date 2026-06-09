@@ -163,7 +163,7 @@ export const mockHeatmaps: Heatmap[] = mockSessions
 export const mockReports: Report[] = mockAthletes.slice(0, 18).map((a, i) => ({
   id: `r_${a.id}`,
   athlete_id: a.id,
-  team_id: a.team_id,
+  team_id: a.team_id ?? "",
   club_id: a.club_id,
   title: `Relatório semanal — ${a.name}`,
   period: `Semana ${20 + (i % 6)}/2026`,
