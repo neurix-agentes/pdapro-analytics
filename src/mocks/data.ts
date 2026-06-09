@@ -87,7 +87,7 @@ export const mockCoaches: Coach[] = [
   { id: "co_diego",  club_id: "c_juventude", name: "Diego Martins", email: "diego@juv.com" },
 ];
 
-const POSITIONS: Position[] = ["GK", "CB", "LB", "RB", "DM", "CM", "AM", "WING", "ST"];
+const POSITIONS: Position[] = ["Goleiro", "Zagueiro", "Lateral Direito", "Lateral Esquerdo", "Volante", "Meio Campo", "Meia Ofensivo", "Ponta Direita", "Atacante", "Centroavante"];
 const FIRST = ["Lucas", "Pedro", "Rafael", "João", "Gabriel", "Matheus", "Felipe", "Bruno", "Diego", "Vinicius", "Arthur", "Enzo", "Davi", "Murilo", "Caio", "Iago", "Yuri", "Théo", "Samuel", "Léo", "Otávio", "Tiago", "Vitor", "Nícolas"];
 const LAST = ["Vieira", "Almeida", "Souza", "Costa", "Oliveira", "Silva", "Lima", "Rocha", "Mendes", "Ferreira", "Gomes", "Cardoso", "Barbosa", "Ribeiro", "Pereira", "Martins", "Carvalho", "Nunes"];
 
