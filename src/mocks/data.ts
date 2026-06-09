@@ -106,6 +106,7 @@ export const mockAthletes: Athlete[] = mockTeams.flatMap((team) =>
       jersey_number: i + 1,
       height_cm: 165 + ((seed + i) % 25),
       weight_kg: 60 + ((seed + i) % 22),
+      status: "active" as const,
       active: true,
     } satisfies Athlete;
   }),
