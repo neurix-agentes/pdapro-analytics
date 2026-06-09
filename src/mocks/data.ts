@@ -134,7 +134,7 @@ export const mockSessions: Session[] = mockAthletes.flatMap((a, idx) =>
     return {
       id: `s_${a.id}_${j}`,
       athlete_id: a.id,
-      team_id: a.team_id,
+      team_id: a.team_id ?? "",
       club_id: a.club_id,
       session_type: TYPES[seed % TYPES.length],
       status: STATUS[seed % STATUS.length],
