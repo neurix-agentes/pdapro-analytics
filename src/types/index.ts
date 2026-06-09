@@ -53,21 +53,47 @@ export interface Coach {
   avatar_url?: string;
 }
 
-export type Position =
-  | "GK" | "DEF" | "LB" | "RB" | "CB" | "MID" | "CM" | "DM" | "AM" | "WING" | "FW" | "ST";
+export const POSITIONS = [
+  "Goleiro",
+  "Zagueiro",
+  "Lateral Direito",
+  "Lateral Esquerdo",
+  "Volante",
+  "Meio Campo",
+  "Meia Ofensivo",
+  "Ponta Direita",
+  "Ponta Esquerda",
+  "Atacante",
+  "Centroavante",
+] as const;
+export type Position = (typeof POSITIONS)[number] | string;
+
+export const DOMINANT_FEET = ["Direito", "Esquerdo", "Ambidestro"] as const;
+export type DominantFoot = (typeof DOMINANT_FEET)[number];
+
+export type AthleteStatus = "active" | "inactive";
 
 export interface Athlete {
   id: string;
-  team_id: string;
+  team_id: string | null;
   club_id: string;
   name: string;
+  nickname?: string | null;
   age: number;
+  birth_date?: string | null;
   position: Position;
+  secondary_position?: Position | null;
+  dominant_foot?: DominantFoot | null;
   jersey_number: number;
   photo_url?: string;
   height_cm?: number;
   weight_kg?: number;
+  status: AthleteStatus;
   active: boolean;
+  /** Engine prep (not shown in UI yet) */
+  last_session_at?: string | null;
+  last_report_at?: string | null;
+  gps_enabled?: boolean;
 }
 
 export interface TransferRecord {
