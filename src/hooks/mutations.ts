@@ -176,3 +176,39 @@ export function useTransferOwnership(clubId: string) {
     },
   });
 }
+
+/* ============ ATHLETES ============ */
+
+export function useCreateAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AthleteInput) => athletesService.create(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useUpdateAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; patch: Partial<AthleteInput> }) =>
+      athletesService.update(args.id, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useSetAthleteStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; status: "active" | "inactive" }) =>
+      athletesService.setStatus(args.id, args.status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+export function useDeleteAthlete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => athletesService.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
