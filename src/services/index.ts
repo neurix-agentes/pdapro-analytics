@@ -4,7 +4,7 @@
 
 import { mockResponse } from "@/api/client";
 import {
-  mockAthletes, mockFields, mockHeatmaps, mockReports, mockSessions,
+  mockFields, mockHeatmaps, mockReports, mockSessions,
 } from "@/mocks/data";
 import { supabase } from "@/integrations/supabase/client";
 import type { Club, Team, Coach, Athlete, Session as PdaSession, Heatmap, Report, Field } from "@/types";
