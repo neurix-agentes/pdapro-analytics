@@ -89,6 +89,57 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
+  async function handlePickPhoto(file: File | null) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      toast.error("Use PNG ou JPEG.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Máximo 2MB.");
+      return;
+    }
+    if (athlete) {
+      // Edição: upload imediato e persiste no atleta
+      try {
+        setPhotoBusy(true);
+        const url = await uploadAthletePhoto(athlete.id, file);
+        await update.mutateAsync({ id: athlete.id, patch: { photo_url: url } });
+        if (photoUrl) deleteAthletePhoto(photoUrl).catch(() => {});
+        setPhotoUrl(url);
+        toast.success("Foto atualizada.");
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        setPhotoBusy(false);
+      }
+    } else {
+      // Criação: guarda em memória para subir após o insert
+      setPendingFile(file);
+      setPendingPreview(URL.createObjectURL(file));
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (athlete && photoUrl) {
+      try {
+        setPhotoBusy(true);
+        await update.mutateAsync({ id: athlete.id, patch: { photo_url: null } });
+        deleteAthletePhoto(photoUrl).catch(() => {});
+        setPhotoUrl(null);
+        toast.success("Foto removida.");
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        setPhotoBusy(false);
+      }
+    } else {
+      setPendingFile(null);
+      setPendingPreview(null);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!clubId) {
@@ -120,7 +171,15 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         await update.mutateAsync({ id: athlete.id, patch: payload });
         toast.success("Atleta atualizado.");
       } else {
-        await create.mutateAsync(payload);
+        const created = await create.mutateAsync(payload);
+        if (pendingFile && created?.id) {
+          try {
+            const url = await uploadAthletePhoto(created.id, pendingFile);
+            await update.mutateAsync({ id: created.id, patch: { photo_url: url } });
+          } catch (err) {
+            toast.error("Atleta criado, mas a foto falhou: " + (err as Error).message);
+          }
+        }
         toast.success("Atleta cadastrado.");
       }
       onOpenChange(false);
@@ -129,7 +188,9 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
     }
   }
 
-  const busy = create.isPending || update.isPending;
+  const busy = create.isPending || update.isPending || photoBusy;
+  const previewSrc = pendingPreview ?? photoUrl;
+  const initials = (form.name || "?").split(" ").map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
