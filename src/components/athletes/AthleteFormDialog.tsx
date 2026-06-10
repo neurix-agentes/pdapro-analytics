@@ -50,6 +50,13 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
     birth_date: "", height_cm: "", weight_kg: "", status: "active",
   });
 
+  // Foto: arquivo pendente (modo criação) ou preview/URL atual (modo edição)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
   useEffect(() => {
     if (athlete) {
       setForm({
@@ -65,13 +72,17 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         weight_kg: athlete.weight_kg ? String(athlete.weight_kg) : "",
         status: athlete.status ?? "active",
       });
+      setPhotoUrl(athlete.photo_url ?? null);
     } else {
       setForm({
         name: "", nickname: "", team_id: teamOptions[0]?.id ?? "", position: "",
         secondary_position: "", dominant_foot: "", jersey_number: "",
         birth_date: "", height_cm: "", weight_kg: "", status: "active",
       });
+      setPhotoUrl(null);
     }
+    setPendingFile(null);
+    setPendingPreview(null);
   }, [athlete, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof typeof form>(k: K, v: string) {
