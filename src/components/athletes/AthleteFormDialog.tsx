@@ -203,10 +203,53 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface/40 p-3">
+            <div className="h-20 w-20 rounded-full overflow-hidden bg-gradient-to-br from-primary/30 to-info/30 grid place-items-center text-base font-bold shrink-0">
+              {previewSrc ? (
+                <img src={previewSrc} alt="Foto" className="h-full w-full object-cover" />
+              ) : (
+                <span>{initials}</span>
+              )}
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="text-sm font-medium">Foto do atleta</div>
+              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2MB.</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={photoBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 text-xs font-semibold hover:bg-primary/15 transition disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {previewSrc ? "Trocar foto" : "Enviar foto"}
+                </button>
+                {previewSrc && (
+                  <button
+                    type="button"
+                    disabled={photoBusy}
+                    onClick={handleRemovePhoto}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface transition disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" /> Remover
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => handlePickPhoto(e.target.files?.[0] ?? null)}
+            />
+          </div>
+
           <div className="md:col-span-2 grid gap-2">
             <Label htmlFor="name">Nome completo *</Label>
             <Input id="name" value={form.name} onChange={(e) => set("name", e.target.value)} required maxLength={120} />
           </div>
+
 
           <div className="grid gap-2">
             <Label htmlFor="nickname">Apelido</Label>
