@@ -46,17 +46,30 @@ function AthletesPage() {
   const setStatus = useSetAthleteStatus();
   const removeAthlete = useDeleteAthlete();
 
-  const list = useMemo(
-    () =>
-      athletes.filter((a) => {
-        if (statusFilter !== ALL && a.status !== statusFilter) return false;
-        if (teamFilter !== ALL && a.team_id !== teamFilter) return false;
-        if (positionFilter !== ALL && a.position !== positionFilter) return false;
-        if (q && !a.name.toLowerCase().includes(q.toLowerCase())) return false;
-        return true;
-      }),
-    [athletes, q, teamFilter, positionFilter, statusFilter],
-  );
+  const list = useMemo(() => {
+    const filtered = athletes.filter((a) => {
+      if (statusFilter !== ALL && a.status !== statusFilter) return false;
+      if (teamFilter !== ALL && a.team_id !== teamFilter) return false;
+      if (positionFilter !== ALL && a.position !== positionFilter) return false;
+      if (q && !a.name.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const numCompare = (av: number | null | undefined, bv: number | null | undefined) => {
+      const aMissing = !av || av <= 0;
+      const bMissing = !bv || bv <= 0;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1; // nulos sempre ao final
+      if (bMissing) return -1;
+      return ((av as number) - (bv as number)) * dir;
+    };
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort.key === "name") return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }) * dir;
+      if (sort.key === "age") return numCompare(a.age, b.age);
+      return numCompare(a.jersey_number, b.jersey_number);
+    });
+    return sorted;
+  }, [athletes, q, teamFilter, positionFilter, statusFilter, sort]);
 
   function openNew() {
     setEditing(null);
