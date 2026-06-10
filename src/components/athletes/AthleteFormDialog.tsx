@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Upload, X } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeams } from "@/hooks/queries";
 import { useCreateAthlete, useUpdateAthlete } from "@/hooks/mutations";
+import { uploadAthletePhoto, deleteAthletePhoto } from "@/lib/storage";
 import { POSITIONS, DOMINANT_FEET, type Athlete } from "@/types";
 import { useClubStore } from "@/store";
 
