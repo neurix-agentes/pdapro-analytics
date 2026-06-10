@@ -159,11 +159,17 @@ function AthletesPage() {
         <table className="w-full text-sm">
           <thead className="bg-surface/40">
             <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              <th className="text-left font-medium px-5 py-3">Atleta</th>
-              <th className="text-left font-medium px-3 py-3">Camisa</th>
+              <th className="text-left font-medium px-5 py-3">
+                <SortBtn label="Atleta" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />
+              </th>
+              <th className="text-left font-medium px-3 py-3">
+                <SortBtn label="Camisa" active={sort.key === "jersey_number"} dir={sort.dir} onClick={() => toggleSort("jersey_number")} />
+              </th>
               <th className="text-left font-medium px-3 py-3">Posição</th>
               <th className="text-left font-medium px-3 py-3">Time</th>
-              <th className="text-right font-medium px-3 py-3">Idade</th>
+              <th className="text-right font-medium px-3 py-3">
+                <SortBtn label="Idade" align="right" active={sort.key === "age"} dir={sort.dir} onClick={() => toggleSort("age")} />
+              </th>
               <th className="text-right font-medium px-3 py-3">Altura</th>
               <th className="text-right font-medium px-3 py-3">Status</th>
               <th className="text-right font-medium px-5 py-3 w-12"></th>
