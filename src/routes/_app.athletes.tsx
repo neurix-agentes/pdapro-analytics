@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Plus, Users, MoreHorizontal, Pencil, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Search, Plus, Users, MoreHorizontal, Pencil, Archive, ArchiveRestore, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/app/PageHeader";
 import { useAthletes, useTeams } from "@/hooks/queries";
@@ -32,6 +32,12 @@ function AthletesPage() {
   const [teamFilter, setTeamFilter] = useState<string>(ALL);
   const [positionFilter, setPositionFilter] = useState<string>(ALL);
   const [statusFilter, setStatusFilter] = useState<string>("active");
+  type SortKey = "name" | "age" | "jersey_number";
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
+
+  function toggleSort(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  }
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Athlete | null>(null);
@@ -40,17 +46,30 @@ function AthletesPage() {
   const setStatus = useSetAthleteStatus();
   const removeAthlete = useDeleteAthlete();
 
-  const list = useMemo(
-    () =>
-      athletes.filter((a) => {
-        if (statusFilter !== ALL && a.status !== statusFilter) return false;
-        if (teamFilter !== ALL && a.team_id !== teamFilter) return false;
-        if (positionFilter !== ALL && a.position !== positionFilter) return false;
-        if (q && !a.name.toLowerCase().includes(q.toLowerCase())) return false;
-        return true;
-      }),
-    [athletes, q, teamFilter, positionFilter, statusFilter],
-  );
+  const list = useMemo(() => {
+    const filtered = athletes.filter((a) => {
+      if (statusFilter !== ALL && a.status !== statusFilter) return false;
+      if (teamFilter !== ALL && a.team_id !== teamFilter) return false;
+      if (positionFilter !== ALL && a.position !== positionFilter) return false;
+      if (q && !a.name.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const numCompare = (av: number | null | undefined, bv: number | null | undefined) => {
+      const aMissing = !av || av <= 0;
+      const bMissing = !bv || bv <= 0;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1; // nulos sempre ao final
+      if (bMissing) return -1;
+      return ((av as number) - (bv as number)) * dir;
+    };
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort.key === "name") return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }) * dir;
+      if (sort.key === "age") return numCompare(a.age, b.age);
+      return numCompare(a.jersey_number, b.jersey_number);
+    });
+    return sorted;
+  }, [athletes, q, teamFilter, positionFilter, statusFilter, sort]);
 
   function openNew() {
     setEditing(null);
@@ -140,11 +159,17 @@ function AthletesPage() {
         <table className="w-full text-sm">
           <thead className="bg-surface/40">
             <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              <th className="text-left font-medium px-5 py-3">Atleta</th>
-              <th className="text-left font-medium px-3 py-3">Camisa</th>
+              <th className="text-left font-medium px-5 py-3">
+                <SortBtn label="Atleta" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />
+              </th>
+              <th className="text-left font-medium px-3 py-3">
+                <SortBtn label="Camisa" active={sort.key === "jersey_number"} dir={sort.dir} onClick={() => toggleSort("jersey_number")} />
+              </th>
               <th className="text-left font-medium px-3 py-3">Posição</th>
               <th className="text-left font-medium px-3 py-3">Time</th>
-              <th className="text-right font-medium px-3 py-3">Idade</th>
+              <th className="text-right font-medium px-3 py-3">
+                <SortBtn label="Idade" align="right" active={sort.key === "age"} dir={sort.dir} onClick={() => toggleSort("age")} />
+              </th>
               <th className="text-right font-medium px-3 py-3">Altura</th>
               <th className="text-right font-medium px-3 py-3">Status</th>
               <th className="text-right font-medium px-5 py-3 w-12"></th>
@@ -259,5 +284,23 @@ function AthletesPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function SortBtn({
+  label, active, dir, onClick, align = "left",
+}: { label: string; active: boolean; dir: "asc" | "desc"; onClick: () => void; align?: "left" | "right" }) {
+  const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-medium hover:text-foreground transition ${
+        active ? "text-foreground" : "text-muted-foreground"
+      } ${align === "right" ? "flex-row-reverse" : ""}`}
+    >
+      {label}
+      <Icon className="h-3 w-3 opacity-70" />
+    </button>
   );
 }

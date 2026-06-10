@@ -1,45 +1,28 @@
-## Problema
+## Objetivo
+Adicionar ordenação por coluna na tabela de atletas e permitir upload/edição da foto do atleta.
 
-O clube **Teste** não pode ser excluído porque a policy `clubs owner delete` exige `is_club_owner(auth.uid(), id)`, que consulta `public.club_members`. Para esse clube não existe linha em `club_members` ligando o criador ao clube como `owner`, então a permissão falha — apesar de o `created_by` apontar para o usuário.
+## Etapa 1 — Ordenação na tabela
+- Adicionar estado `sort` em `src/routes/_app.athletes.tsx` com `{ key: 'name' | 'age' | 'jersey_number', dir: 'asc' | 'desc' }`. Default: `name asc`.
+- Tornar os cabeçalhos **Atleta**, **Camisa** e **Idade** clicáveis (botão) com indicador visual (ChevronUp/ChevronDown). Click alterna asc/desc; click em outra coluna troca a chave.
+- Ordenação aplicada após os filtros existentes (busca, time, posição, status), sem alterá-los.
+- Regras de comparação:
+  - `name`: `localeCompare` PT-BR, case-insensitive.
+  - `age` e `jersey_number`: numérico; valores nulos/undefined sempre ao final independente da direção.
 
-A função `public.tg_club_add_owner()` já existe no banco e foi escrita para inserir essa linha automaticamente após o `INSERT` em `clubs`, mas o trigger nunca foi criado (não há triggers no projeto). Resultado: todo clube criado direto pela UI fica sem membership de owner.
+## Etapa 2 — Foto do atleta na edição
+- Criar bucket de storage `athlete-photos` (público, mesmo padrão de `club-logos`) caso não exista, com políticas de upload/leitura/atualização para usuários autenticados membros do clube.
+- Estender `src/lib/storage.ts` com `uploadAthletePhoto(athleteId, file)` e `deleteAthletePhoto(publicUrl)` (mesmo padrão de `uploadClubLogo`: validação PNG/JPEG, limite 2MB).
+- Em `src/components/athletes/AthleteFormDialog.tsx`:
+  - Novo campo de foto no topo do formulário: preview circular + botão "Trocar foto" / "Remover foto" (reusar visual do `LogoUploader`, versão simplificada inline).
+  - No modo **edição**: upload imediato após seleção, atualiza `photo_url` via `useUpdateAthlete` e remove arquivo antigo do storage se existir.
+  - No modo **criação**: como ainda não há `athlete.id`, manter o arquivo selecionado em memória e fazer upload logo após a criação do atleta, depois persistir `photo_url` com um segundo update. Mensagens via `toast`.
+  - Manter exibição já existente da foto na lista (já usa `a.photo_url`).
 
-## Correção
-
-### 1. Migração no banco
-
-- Criar o trigger `AFTER INSERT ON public.clubs` que dispara `public.tg_club_add_owner()` por linha. Isso garante que, daqui pra frente, todo novo clube já nasça com a membership de owner.
-- Backfill: para todo clube cujo `created_by` não tem linha correspondente em `club_members`, inserir `(club_id, user_id, role = 'owner')` com `ON CONFLICT DO NOTHING`. Isso corrige o clube "Teste" e qualquer outro clube órfão do mesmo modo.
-
-### 2. Sem alterações de frontend
-
-A mensagem "Sem permissão para excluir este clube." (introduzida no fix anterior, que detecta `count = 0`) continua correta como salvaguarda. Após o backfill, o DELETE do clube "Teste" funcionará normalmente pela UI.
-
-## Validação
-
-Depois da migração:
-- Conferir que `club_members` contém uma linha `owner` para o clube "Teste" com `user_id = 0ac69a42-…` (fpgutterres).
-- Excluir o clube "Teste" pela tela de Clubes — deve sumir da lista.
-- Criar um novo clube de teste e confirmar que o `club_members` recebe a linha de owner automaticamente.
+## Fora do escopo
+- Não alterar filtros, schema da tabela `athletes` (coluna `photo_url` já existe) ou demais campos do formulário.
+- Sem crop/resize de imagem nesta fase.
 
 ## Detalhes técnicos
-
-- Trigger:
-  ```sql
-  CREATE TRIGGER trg_clubs_add_owner
-    AFTER INSERT ON public.clubs
-    FOR EACH ROW EXECUTE FUNCTION public.tg_club_add_owner();
-  ```
-- Backfill:
-  ```sql
-  INSERT INTO public.club_members (club_id, user_id, role)
-  SELECT c.id, c.created_by, 'owner'
-  FROM public.clubs c
-  WHERE c.created_by IS NOT NULL
-    AND NOT EXISTS (
-      SELECT 1 FROM public.club_members cm
-      WHERE cm.club_id = c.id AND cm.user_id = c.created_by
-    )
-  ON CONFLICT (club_id, user_id) DO NOTHING;
-  ```
-- Nenhum código de aplicação precisa mudar.
+- Cabeçalho sortável: componente local `SortableTh` dentro do arquivo de rota para evitar novo arquivo.
+- `age` é derivado (já presente em `a.age`); usar diretamente.
+- Bucket criado via `supabase--migration` com `storage.buckets` insert + policies em `storage.objects` filtrando por `bucket_id = 'athlete-photos'` e membership no clube (consulta a `athletes` + `club_members`).

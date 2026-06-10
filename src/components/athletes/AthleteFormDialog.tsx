@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Upload, X } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeams } from "@/hooks/queries";
 import { useCreateAthlete, useUpdateAthlete } from "@/hooks/mutations";
+import { uploadAthletePhoto, deleteAthletePhoto } from "@/lib/storage";
 import { POSITIONS, DOMINANT_FEET, type Athlete } from "@/types";
 import { useClubStore } from "@/store";
 
@@ -48,6 +50,13 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
     birth_date: "", height_cm: "", weight_kg: "", status: "active",
   });
 
+  // Foto: arquivo pendente (modo criação) ou preview/URL atual (modo edição)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
   useEffect(() => {
     if (athlete) {
       setForm({
@@ -63,17 +72,72 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         weight_kg: athlete.weight_kg ? String(athlete.weight_kg) : "",
         status: athlete.status ?? "active",
       });
+      setPhotoUrl(athlete.photo_url ?? null);
     } else {
       setForm({
         name: "", nickname: "", team_id: teamOptions[0]?.id ?? "", position: "",
         secondary_position: "", dominant_foot: "", jersey_number: "",
         birth_date: "", height_cm: "", weight_kg: "", status: "active",
       });
+      setPhotoUrl(null);
     }
+    setPendingFile(null);
+    setPendingPreview(null);
   }, [athlete, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  async function handlePickPhoto(file: File | null) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      toast.error("Use PNG ou JPEG.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Máximo 2MB.");
+      return;
+    }
+    if (athlete) {
+      // Edição: upload imediato e persiste no atleta
+      try {
+        setPhotoBusy(true);
+        const url = await uploadAthletePhoto(athlete.id, file);
+        await update.mutateAsync({ id: athlete.id, patch: { photo_url: url } });
+        if (photoUrl) deleteAthletePhoto(photoUrl).catch(() => {});
+        setPhotoUrl(url);
+        toast.success("Foto atualizada.");
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        setPhotoBusy(false);
+      }
+    } else {
+      // Criação: guarda em memória para subir após o insert
+      setPendingFile(file);
+      setPendingPreview(URL.createObjectURL(file));
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (athlete && photoUrl) {
+      try {
+        setPhotoBusy(true);
+        await update.mutateAsync({ id: athlete.id, patch: { photo_url: null } });
+        deleteAthletePhoto(photoUrl).catch(() => {});
+        setPhotoUrl(null);
+        toast.success("Foto removida.");
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        setPhotoBusy(false);
+      }
+    } else {
+      setPendingFile(null);
+      setPendingPreview(null);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -107,7 +171,15 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         await update.mutateAsync({ id: athlete.id, patch: payload });
         toast.success("Atleta atualizado.");
       } else {
-        await create.mutateAsync(payload);
+        const created = await create.mutateAsync(payload);
+        if (pendingFile && created?.id) {
+          try {
+            const url = await uploadAthletePhoto(created.id, pendingFile);
+            await update.mutateAsync({ id: created.id, patch: { photo_url: url } });
+          } catch (err) {
+            toast.error("Atleta criado, mas a foto falhou: " + (err as Error).message);
+          }
+        }
         toast.success("Atleta cadastrado.");
       }
       onOpenChange(false);
@@ -116,7 +188,9 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
     }
   }
 
-  const busy = create.isPending || update.isPending;
+  const busy = create.isPending || update.isPending || photoBusy;
+  const previewSrc = pendingPreview ?? photoUrl;
+  const initials = (form.name || "?").split(" ").map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,10 +203,53 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface/40 p-3">
+            <div className="h-20 w-20 rounded-full overflow-hidden bg-gradient-to-br from-primary/30 to-info/30 grid place-items-center text-base font-bold shrink-0">
+              {previewSrc ? (
+                <img src={previewSrc} alt="Foto" className="h-full w-full object-cover" />
+              ) : (
+                <span>{initials}</span>
+              )}
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="text-sm font-medium">Foto do atleta</div>
+              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2MB.</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={photoBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 text-xs font-semibold hover:bg-primary/15 transition disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {previewSrc ? "Trocar foto" : "Enviar foto"}
+                </button>
+                {previewSrc && (
+                  <button
+                    type="button"
+                    disabled={photoBusy}
+                    onClick={handleRemovePhoto}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface transition disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" /> Remover
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => handlePickPhoto(e.target.files?.[0] ?? null)}
+            />
+          </div>
+
           <div className="md:col-span-2 grid gap-2">
             <Label htmlFor="name">Nome completo *</Label>
             <Input id="name" value={form.name} onChange={(e) => set("name", e.target.value)} required maxLength={120} />
           </div>
+
 
           <div className="grid gap-2">
             <Label htmlFor="nickname">Apelido</Label>
