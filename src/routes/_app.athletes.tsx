@@ -32,6 +32,12 @@ function AthletesPage() {
   const [teamFilter, setTeamFilter] = useState<string>(ALL);
   const [positionFilter, setPositionFilter] = useState<string>(ALL);
   const [statusFilter, setStatusFilter] = useState<string>("active");
+  type SortKey = "name" | "age" | "jersey_number";
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
+
+  function toggleSort(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  }
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Athlete | null>(null);
