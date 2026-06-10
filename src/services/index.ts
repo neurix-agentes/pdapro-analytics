@@ -487,7 +487,7 @@ export const athletesService = {
         birth_date: patch.birth_date || null,
         height_cm: patch.height_cm ?? null,
         weight_kg: patch.weight_kg ?? null,
-        photo_url: patch.photo_url ?? undefined,
+        photo_url: patch.photo_url === undefined ? undefined : patch.photo_url,
         status: patch.status,
       })
       .eq("id", id);
