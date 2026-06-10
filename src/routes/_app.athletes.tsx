@@ -286,3 +286,21 @@ function AthletesPage() {
     </div>
   );
 }
+
+function SortBtn({
+  label, active, dir, onClick, align = "left",
+}: { label: string; active: boolean; dir: "asc" | "desc"; onClick: () => void; align?: "left" | "right" }) {
+  const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-medium hover:text-foreground transition ${
+        active ? "text-foreground" : "text-muted-foreground"
+      } ${align === "right" ? "flex-row-reverse" : ""}`}
+    >
+      {label}
+      <Icon className="h-3 w-3 opacity-70" />
+    </button>
+  );
+}
