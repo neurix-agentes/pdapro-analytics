@@ -26,7 +26,8 @@ export function validateAthletePhoto(file: File | null | undefined): AthletePhot
 }
 
 export async function uploadAthletePhoto(athleteId: string, file: File): Promise<string> {
-  validateImage(file);
+  const v = validateAthletePhoto(file);
+  if (!v.ok) throw new Error(v.message);
   const ext = file.type === "image/png" ? "png" : "jpg";
   const path = `${athleteId}/photo-${Date.now()}.${ext}`;
   const { error } = await supabase.storage
