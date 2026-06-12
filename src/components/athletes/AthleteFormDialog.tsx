@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeams } from "@/hooks/queries";
 import { useCreateAthlete, useUpdateAthlete } from "@/hooks/mutations";
-import { uploadAthletePhoto, deleteAthletePhoto } from "@/lib/storage";
+import { uploadAthletePhoto, deleteAthletePhoto, validateAthletePhoto } from "@/lib/storage";
 import { POSITIONS, DOMINANT_FEET, type Athlete } from "@/types";
 import { useClubStore } from "@/store";
 
@@ -91,12 +91,10 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
 
   async function handlePickPhoto(file: File | null) {
     if (!file) return;
-    if (!["image/png", "image/jpeg"].includes(file.type)) {
-      toast.error("Use PNG ou JPEG.");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Máximo 2MB.");
+    const result = validateAthletePhoto(file);
+    if (!result.ok) {
+      toast.error(result.message);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     if (athlete) {
@@ -213,7 +211,7 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
             </div>
             <div className="flex-1 space-y-1">
               <div className="text-sm font-medium">Foto do atleta</div>
-              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2MB.</p>
+              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2 MB.</p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   type="button"

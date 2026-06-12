@@ -1,28 +1,29 @@
-## Objetivo
-Adicionar ordenação por coluna na tabela de atletas e permitir upload/edição da foto do atleta.
+## Contexto
+`AthleteFormDialog.handlePickPhoto` e `uploadAthletePhoto` já validam tipo (PNG/JPEG) e tamanho (2MB), mas as mensagens são genéricas ("Use PNG ou JPEG.", "Máximo 2MB.") e não cobrem casos como arquivo vazio ou extensão não reconhecida. Vamos reforçar a validação e tornar as mensagens claras e acionáveis, mantendo o limite atual.
 
-## Etapa 1 — Ordenação na tabela
-- Adicionar estado `sort` em `src/routes/_app.athletes.tsx` com `{ key: 'name' | 'age' | 'jersey_number', dir: 'asc' | 'desc' }`. Default: `name asc`.
-- Tornar os cabeçalhos **Atleta**, **Camisa** e **Idade** clicáveis (botão) com indicador visual (ChevronUp/ChevronDown). Click alterna asc/desc; click em outra coluna troca a chave.
-- Ordenação aplicada após os filtros existentes (busca, time, posição, status), sem alterá-los.
-- Regras de comparação:
-  - `name`: `localeCompare` PT-BR, case-insensitive.
-  - `age` e `jersey_number`: numérico; valores nulos/undefined sempre ao final independente da direção.
+## Etapa 1 — Centralizar regras de validação
+- Em `src/lib/storage.ts`, exportar constantes e função reutilizável:
+  - `ATHLETE_PHOTO_MAX_BYTES = 2 * 1024 * 1024`
+  - `ATHLETE_PHOTO_ACCEPTED_TYPES = ["image/png", "image/jpeg"]`
+  - `ATHLETE_PHOTO_ACCEPTED_LABEL = "PNG ou JPEG"`
+  - `validateAthletePhoto(file): { ok: true } | { ok: false; message: string }` cobrindo:
+    - arquivo ausente / vazio (`size === 0`) → "Arquivo vazio ou inválido."
+    - tipo MIME não permitido → "Formato não suportado. Envie um arquivo PNG ou JPEG."
+    - tamanho acima do limite → "Arquivo muito grande (`X.XX MB`). O limite é 2 MB."
+- `uploadAthletePhoto` passa a chamar `validateAthletePhoto` (em vez do `validateImage` local) e lança `Error(message)` quando inválido, garantindo mensagem consistente caso o upload seja chamado fora do dialog.
 
-## Etapa 2 — Foto do atleta na edição
-- Criar bucket de storage `athlete-photos` (público, mesmo padrão de `club-logos`) caso não exista, com políticas de upload/leitura/atualização para usuários autenticados membros do clube.
-- Estender `src/lib/storage.ts` com `uploadAthletePhoto(athleteId, file)` e `deleteAthletePhoto(publicUrl)` (mesmo padrão de `uploadClubLogo`: validação PNG/JPEG, limite 2MB).
+## Etapa 2 — Aplicar no AthleteFormDialog
 - Em `src/components/athletes/AthleteFormDialog.tsx`:
-  - Novo campo de foto no topo do formulário: preview circular + botão "Trocar foto" / "Remover foto" (reusar visual do `LogoUploader`, versão simplificada inline).
-  - No modo **edição**: upload imediato após seleção, atualiza `photo_url` via `useUpdateAthlete` e remove arquivo antigo do storage se existir.
-  - No modo **criação**: como ainda não há `athlete.id`, manter o arquivo selecionado em memória e fazer upload logo após a criação do atleta, depois persistir `photo_url` com um segundo update. Mensagens via `toast`.
-  - Manter exibição já existente da foto na lista (já usa `a.photo_url`).
+  - Substituir as checagens inline em `handlePickPhoto` por `validateAthletePhoto(file)`; em caso de erro, exibir `toast.error(result.message)` e abortar.
+  - Resetar `fileInputRef.current.value` após erro para permitir reenvio do mesmo arquivo já corrigido.
+  - Atualizar o texto auxiliar abaixo de "Foto do atleta" para: `"PNG ou JPEG, até 2 MB."` (mantém formato atual, só formaliza unidade).
+  - No `<input type="file">`, manter `accept="image/png,image/jpeg"` (já presente) — apenas garante o filtro nativo do browser.
 
 ## Fora do escopo
-- Não alterar filtros, schema da tabela `athletes` (coluna `photo_url` já existe) ou demais campos do formulário.
-- Sem crop/resize de imagem nesta fase.
+- Não alterar o bucket, RLS, upload pendente em criação, fluxo de remoção, nem o limite de 2 MB.
+- Sem crop/resize/conversão de imagem.
+- Sem alterações em outros uploaders (ex.: `LogoUploader`).
 
 ## Detalhes técnicos
-- Cabeçalho sortável: componente local `SortableTh` dentro do arquivo de rota para evitar novo arquivo.
-- `age` é derivado (já presente em `a.age`); usar diretamente.
-- Bucket criado via `supabase--migration` com `storage.buckets` insert + policies em `storage.objects` filtrando por `bucket_id = 'athlete-photos'` e membership no clube (consulta a `athletes` + `club_members`).
+- Tamanho exibido com `(file.size / (1024 * 1024)).toFixed(2)`.
+- `validateAthletePhoto` é pura e síncrona, evitando duplicação entre UI e camada de storage e garantindo que qualquer caller futuro receba a mesma mensagem.

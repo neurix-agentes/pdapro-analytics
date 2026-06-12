@@ -5,17 +5,29 @@ const ATHLETE_PHOTOS_BUCKET = "athlete-photos";
 // 10 anos — bucket privado, URL assinada de longa duração para uso direto em <img>.
 const ATHLETE_PHOTO_SIGNED_TTL = 60 * 60 * 24 * 365 * 10;
 
-function validateImage(file: File) {
-  if (!["image/png", "image/jpeg"].includes(file.type)) {
-    throw new Error("Formato inválido. Use PNG ou JPEG.");
+export const ATHLETE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+export const ATHLETE_PHOTO_ACCEPTED_TYPES = ["image/png", "image/jpeg"] as const;
+export const ATHLETE_PHOTO_ACCEPTED_LABEL = "PNG ou JPEG";
+
+export type AthletePhotoValidation = { ok: true } | { ok: false; message: string };
+
+export function validateAthletePhoto(file: File | null | undefined): AthletePhotoValidation {
+  if (!file || file.size === 0) {
+    return { ok: false, message: "Arquivo vazio ou inválido." };
   }
-  if (file.size > 2 * 1024 * 1024) {
-    throw new Error("Arquivo maior que 2MB.");
+  if (!ATHLETE_PHOTO_ACCEPTED_TYPES.includes(file.type as (typeof ATHLETE_PHOTO_ACCEPTED_TYPES)[number])) {
+    return { ok: false, message: `Formato não suportado. Envie um arquivo ${ATHLETE_PHOTO_ACCEPTED_LABEL}.` };
   }
+  if (file.size > ATHLETE_PHOTO_MAX_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(2);
+    return { ok: false, message: `Arquivo muito grande (${mb} MB). O limite é 2 MB.` };
+  }
+  return { ok: true };
 }
 
 export async function uploadAthletePhoto(athleteId: string, file: File): Promise<string> {
-  validateImage(file);
+  const v = validateAthletePhoto(file);
+  if (!v.ok) throw new Error(v.message);
   const ext = file.type === "image/png" ? "png" : "jpg";
   const path = `${athleteId}/photo-${Date.now()}.${ext}`;
   const { error } = await supabase.storage
