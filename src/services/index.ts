@@ -25,13 +25,39 @@ export const clubsService = {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []).map(mapClubRow);
+    const clubs = (data ?? []).map(mapClubRow);
+    if (!clubs.length) return clubs;
+    const ids = clubs.map((c) => c.id);
+    const [teamsRes, athletesRes] = await Promise.all([
+      supabase.from("teams").select("club_id").in("club_id", ids),
+      supabase.from("athletes").select("club_id").in("club_id", ids).eq("status", "active"),
+    ]);
+    const teamCount = new Map<string, number>();
+    (teamsRes.data ?? []).forEach((r: { club_id: string }) => {
+      teamCount.set(r.club_id, (teamCount.get(r.club_id) ?? 0) + 1);
+    });
+    const athleteCount = new Map<string, number>();
+    (athletesRes.data ?? []).forEach((r: { club_id: string }) => {
+      athleteCount.set(r.club_id, (athleteCount.get(r.club_id) ?? 0) + 1);
+    });
+    return clubs.map((c) => ({
+      ...c,
+      active_teams: teamCount.get(c.id) ?? 0,
+      active_athletes: athleteCount.get(c.id) ?? 0,
+    }));
   },
   async get(id: string): Promise<Club | null> {
     const { data, error } = await supabase.from("clubs").select("*").eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
-    return data ? mapClubRow(data) : null;
+    if (!data) return null;
+    const club = mapClubRow(data);
+    const [{ count: teams }, { count: athletes }] = await Promise.all([
+      supabase.from("teams").select("id", { count: "exact", head: true }).eq("club_id", id),
+      supabase.from("athletes").select("id", { count: "exact", head: true }).eq("club_id", id).eq("status", "active"),
+    ]);
+    return { ...club, active_teams: teams ?? 0, active_athletes: athletes ?? 0 };
   },
+
   async create(
     payload: Omit<Club, "id" | "created_at" | "active_teams" | "active_athletes">,
   ): Promise<Club> {
@@ -129,13 +155,34 @@ export const teamsService = {
     if (s.clubId) q = q.eq("club_id", s.clubId);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
-    return (data ?? []).map(mapTeamRow);
+    const teams = (data ?? []).map(mapTeamRow);
+    if (!teams.length) return teams;
+    const ids = teams.map((t) => t.id);
+    const { data: athletes } = await supabase
+      .from("athletes")
+      .select("team_id")
+      .in("team_id", ids)
+      .eq("status", "active");
+    const counts = new Map<string, number>();
+    (athletes ?? []).forEach((r: { team_id: string | null }) => {
+      if (!r.team_id) return;
+      counts.set(r.team_id, (counts.get(r.team_id) ?? 0) + 1);
+    });
+    return teams.map((t) => ({ ...t, athletes_count: counts.get(t.id) ?? 0 }));
   },
   async get(id: string): Promise<Team | null> {
     const { data, error } = await supabase.from("teams").select("*").eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
-    return data ? mapTeamRow(data) : null;
+    if (!data) return null;
+    const team = mapTeamRow(data);
+    const { count } = await supabase
+      .from("athletes")
+      .select("id", { count: "exact", head: true })
+      .eq("team_id", id)
+      .eq("status", "active");
+    return { ...team, athletes_count: count ?? 0 };
   },
+
   async create(payload: Omit<Team, "id" | "created_at" | "athletes_count">): Promise<Team> {
     const { data, error } = await supabase
       .from("teams")
