@@ -211,7 +211,7 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
             </div>
             <div className="flex-1 space-y-1">
               <div className="text-sm font-medium">Foto do atleta</div>
-              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2MB.</p>
+              <p className="text-xs text-muted-foreground">PNG ou JPEG, até 2 MB.</p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   type="button"
