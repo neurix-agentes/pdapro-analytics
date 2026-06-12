@@ -91,12 +91,10 @@ export function AthleteFormDialog({ open, onOpenChange, athlete }: Props) {
 
   async function handlePickPhoto(file: File | null) {
     if (!file) return;
-    if (!["image/png", "image/jpeg"].includes(file.type)) {
-      toast.error("Use PNG ou JPEG.");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Máximo 2MB.");
+    const result = validateAthletePhoto(file);
+    if (!result.ok) {
+      toast.error(result.message);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     if (athlete) {
