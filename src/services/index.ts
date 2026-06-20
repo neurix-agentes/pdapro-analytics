@@ -1,13 +1,11 @@
 // PDA Sport — Service layer
-// clubs / teams / coaches → Supabase real
-// athletes / sessions / heatmaps / reports / fields → mocks (próximas fases)
+// clubs / teams / coaches / athletes / sessions / fields → Supabase real
+// heatmaps / reports → mocks (próximas fases)
 
 import { mockResponse } from "@/api/client";
-import {
-  mockFields, mockHeatmaps, mockReports, mockSessions,
-} from "@/mocks/data";
+import { mockHeatmaps, mockReports } from "@/mocks/data";
 import { supabase } from "@/integrations/supabase/client";
-import type { Club, Team, Coach, Athlete, Session as PdaSession, Heatmap, Report, Field } from "@/types";
+import type { Club, Team, Coach, Athlete, Session as PdaSession, SessionType, Heatmap, Report, Field } from "@/types";
 
 export interface Scope { clubId?: string | null; teamId?: string | null }
 
@@ -560,21 +558,97 @@ function translateAthleteError(msg: string): string {
   return msg;
 }
 
-export const sessionsService = {
-  list: (s: Scope = {}): Promise<PdaSession[]> => mockResponse(mockSessions.filter(inScope(s))),
-  recent: (s: Scope = {}, n = 8): Promise<PdaSession[]> =>
-    mockResponse(
-      [...mockSessions.filter(inScope(s))]
-        .sort((a, b) => +new Date(b.date) - +new Date(a.date))
-        .slice(0, n),
-    ),
+function mapSessionRow(r: Record<string, unknown>): PdaSession {
+  const metrics = r.metrics as PdaSession["metrics"] | null;
+  return {
+    id: r.id as string,
+    club_id: r.club_id as string,
+    team_id: (r.team_id as string | null) ?? "",
+    athlete_id: (r.athlete_id as string | null) ?? "",
+    field_id: (r.field_id as string | null) ?? undefined,
+    session_type: (r.session_type as SessionType) ?? "treino",
+    status: (r.status as PdaSession["status"]) ?? "pending",
+    date: (r.date as string) ?? new Date().toISOString(),
+    duration_min: (r.duration_min as number | null) ?? 0,
+    gps_file_url: (r.gps_file_url as string | null) ?? undefined,
+    metrics: metrics ?? undefined,
+    notes: (r.notes as string | null) ?? null,
+  };
+}
+
+export type SessionInput = {
+  club_id: string;
+  athlete_id: string;
+  field_id: string;
+  team_id?: string | null;
+  session_type: SessionType;
+  date: string; // ISO
+  notes?: string | null;
 };
+
+export const sessionsService = {
+  async list(s: Scope = {}): Promise<PdaSession[]> {
+    let q = supabase.from("sessions").select("*").order("date", { ascending: false });
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    if (s.teamId) q = q.eq("team_id", s.teamId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapSessionRow);
+  },
+  async recent(s: Scope = {}, n = 8): Promise<PdaSession[]> {
+    let q = supabase.from("sessions").select("*").order("date", { ascending: false }).limit(n);
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    if (s.teamId) q = q.eq("team_id", s.teamId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapSessionRow);
+  },
+  async create(payload: SessionInput): Promise<PdaSession> {
+    const { data, error } = await supabase
+      .from("sessions")
+      .insert({
+        club_id: payload.club_id,
+        athlete_id: payload.athlete_id,
+        field_id: payload.field_id,
+        team_id: payload.team_id ?? null,
+        session_type: payload.session_type,
+        date: payload.date,
+        notes: payload.notes ?? null,
+        status: "pending",
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return mapSessionRow(data);
+  },
+};
+
 export const heatmapsService = {
   list: (s: Scope = {}): Promise<Heatmap[]> => mockResponse(mockHeatmaps.filter(inScope(s))),
 };
 export const reportsService = {
   list: (s: Scope = {}): Promise<Report[]> => mockResponse(mockReports.filter(inScope(s))),
 };
+
+function mapFieldRow(r: Record<string, unknown>): Field {
+  return {
+    id: r.id as string,
+    club_id: r.club_id as string,
+    name: r.name as string,
+    width_m: (r.width_m as number | null) ?? 0,
+    length_m: (r.length_m as number | null) ?? 0,
+    surface: ((r.surface as Field["surface"]) ?? "natural"),
+    gps_lat: (r.gps_lat as number | null) ?? undefined,
+    gps_lng: (r.gps_lng as number | null) ?? undefined,
+  };
+}
+
 export const fieldsService = {
-  list: (s: Scope = {}): Promise<Field[]> => mockResponse(mockFields.filter((f) => !s.clubId || f.club_id === s.clubId)),
+  async list(s: Scope = {}): Promise<Field[]> {
+    let q = supabase.from("fields").select("*").order("name");
+    if (s.clubId) q = q.eq("club_id", s.clubId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapFieldRow);
+  },
 };

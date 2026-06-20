@@ -106,7 +106,7 @@ export interface TransferRecord {
 }
 
 export type SessionType = "treino" | "jogo" | "amistoso" | "avaliacao";
-export type SessionStatus = "processed" | "processing" | "queued" | "failed";
+export type SessionStatus = "pending" | "processed" | "processing" | "queued" | "failed";
 
 export interface SessionMetrics {
   distance_km: number;
@@ -129,6 +129,7 @@ export interface Session {
   duration_min: number;
   gps_file_url?: string;
   metrics?: SessionMetrics;
+  notes?: string | null;
 }
 
 export interface Heatmap {
