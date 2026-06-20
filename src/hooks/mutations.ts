@@ -212,3 +212,13 @@ export function useDeleteAthlete() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
   });
 }
+
+/* ============ SESSIONS ============ */
+
+export function useCreateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SessionInput) => sessionsService.create(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
+  });
+}
