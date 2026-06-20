@@ -746,7 +746,12 @@ export type Database = {
         | "WING"
         | "FW"
         | "ST"
-      session_status: "processed" | "processing" | "queued" | "failed"
+      session_status:
+        | "processed"
+        | "processing"
+        | "pending"
+        | "queued"
+        | "failed"
       session_type: "treino" | "jogo" | "amistoso" | "avaliacao"
     }
     CompositeTypes: {
@@ -900,7 +905,13 @@ export const Constants = {
         "FW",
         "ST",
       ],
-      session_status: ["processed", "processing", "queued", "failed"],
+      session_status: [
+        "processed",
+        "processing",
+        "pending",
+        "queued",
+        "failed",
+      ],
       session_type: ["treino", "jogo", "amistoso", "avaliacao"],
     },
   },
