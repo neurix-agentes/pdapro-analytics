@@ -471,6 +471,7 @@ export type Database = {
           gps_file_url: string | null
           id: string
           metrics: Json | null
+          notes: string | null
           session_type: Database["public"]["Enums"]["session_type"]
           status: Database["public"]["Enums"]["session_status"]
           team_id: string | null
@@ -486,6 +487,7 @@ export type Database = {
           gps_file_url?: string | null
           id?: string
           metrics?: Json | null
+          notes?: string | null
           session_type?: Database["public"]["Enums"]["session_type"]
           status?: Database["public"]["Enums"]["session_status"]
           team_id?: string | null
@@ -501,6 +503,7 @@ export type Database = {
           gps_file_url?: string | null
           id?: string
           metrics?: Json | null
+          notes?: string | null
           session_type?: Database["public"]["Enums"]["session_type"]
           status?: Database["public"]["Enums"]["session_status"]
           team_id?: string | null
@@ -746,7 +749,12 @@ export type Database = {
         | "WING"
         | "FW"
         | "ST"
-      session_status: "processed" | "processing" | "queued" | "failed"
+      session_status:
+        | "processed"
+        | "processing"
+        | "pending"
+        | "queued"
+        | "failed"
       session_type: "treino" | "jogo" | "amistoso" | "avaliacao"
     }
     CompositeTypes: {
@@ -900,7 +908,13 @@ export const Constants = {
         "FW",
         "ST",
       ],
-      session_status: ["processed", "processing", "queued", "failed"],
+      session_status: [
+        "processed",
+        "processing",
+        "pending",
+        "queued",
+        "failed",
+      ],
       session_type: ["treino", "jogo", "amistoso", "avaliacao"],
     },
   },

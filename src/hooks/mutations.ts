@@ -1,6 +1,6 @@
 // PDA Sport — Mutations (Supabase)
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clubsService, teamsService, coachesService, athletesService, invitesService, membershipService, type ClubRole, type AthleteInput } from "@/services";
+import { clubsService, teamsService, coachesService, athletesService, invitesService, membershipService, sessionsService, type ClubRole, type AthleteInput, type SessionInput } from "@/services";
 import { uploadClubLogo, deleteClubLogo } from "@/lib/storage";
 import type { Club, Team, Coach } from "@/types";
 
@@ -210,5 +210,15 @@ export function useDeleteAthlete() {
   return useMutation({
     mutationFn: (id: string) => athletesService.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["athletes"] }),
+  });
+}
+
+/* ============ SESSIONS ============ */
+
+export function useCreateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SessionInput) => sessionsService.create(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
   });
 }
